@@ -13,6 +13,14 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
+        // 使用本地系统字体，避免 Web 端请求 Google Fonts（fonts.gstatic.com）。
+        fontFamily: 'Arial',
+        fontFamilyFallback: const <String>[
+          'PingFang SC',
+          'Hiragino Sans GB',
+          'Microsoft YaHei',
+          'sans-serif',
+        ],
         // This is the theme of your application.
         //
         // TRY THIS: Try running your application with "flutter run". You'll see
