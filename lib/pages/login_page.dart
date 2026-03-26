@@ -2,8 +2,21 @@ import 'package:flutter/material.dart';
 import 'dart:math';
 import 'package:tdesign_flutter/tdesign_flutter.dart';
 
-class LoginPage extends StatelessWidget {
+class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final TextEditingController _inputController = TextEditingController();
+
+  @override
+  void dispose() {
+    _inputController.dispose();
+    super.dispose();
+  }
 
   Widget _buildWave({
     required String asset,
@@ -129,18 +142,10 @@ class LoginPage extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    SizedBox(
-                      width: constraints.maxWidth * 0.8,
-                      height: 34,
-                      child: const TextField(
-                        textAlignVertical: TextAlignVertical.center,
-                        decoration: InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          border: OutlineInputBorder(),
-                          hintText: 'Enter a search term',
-                        ),
-                      ),
+                    TDInput(
+                      leftIcon: const Icon(TDIcons.app),
+                      controller: _inputController,
+                      hintText: '请输入文字',
                     ),
                     const SizedBox(height: 12),
                     TDText(
