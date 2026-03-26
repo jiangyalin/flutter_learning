@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 class LoginPage extends StatelessWidget {
   const LoginPage({super.key});
@@ -39,7 +40,7 @@ class LoginPage extends StatelessWidget {
           final tailTop = constraints.maxHeight - tailHeight - 1;
           final waveBottom = constraints.maxHeight - headerHeight - 1;
           final pageWidthText =
-              '这是登录页3 ${constraints.maxWidth.toStringAsFixed(0)}';
+              '这是登录页6 ${constraints.maxWidth.toStringAsFixed(0)}';
 
           return Stack(
             children: [
@@ -125,14 +126,33 @@ class LoginPage extends StatelessWidget {
                 )
               ),
               Center(
-                child: Text(
-                  pageWidthText,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.blue,
-                  ),
-                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: constraints.maxWidth * 0.8,
+                      height: 34,
+                      child: const TextField(
+                        textAlignVertical: TextAlignVertical.center,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          border: OutlineInputBorder(),
+                          hintText: 'Enter a search term',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TDText(
+                      pageWidthText,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ],
+                )
               ),
             ],
           );

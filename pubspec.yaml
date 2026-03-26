@@ -18,7 +18,8 @@ publish_to: 'none' # 如果你希望发布到 pub.dev，请删除此行
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.5 <4.0.0'
+  sdk: '>=3.2.6 <4.0.0'
+  flutter: '>=3.16.0'
 
 # dependencies 用于声明项目运行所需的依赖包。
 # 若要自动升级到最新主版本，可执行 `flutter pub upgrade --major-versions`。
@@ -27,6 +28,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  tdesign_flutter: ^0.2.7
 
 
   # 下面添加 Cupertino Icons 图标字体。
