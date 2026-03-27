@@ -139,26 +139,41 @@ class _LoginPageState extends State<LoginPage> {
                 )
               ),
               Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TDInput(
-                      leftIcon: const Icon(TDIcons.app),
-                      controller: _inputController,
-                      hintText: '请输入文字',
-                    ),
-                    const SizedBox(height: 12),
-                    TDText(
-                      pageWidthText,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.blue,
+                child: SizedBox(
+                  width: constraints.maxWidth * 0.8,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        height: 34,
+                        child: TDInput(
+                          leftIcon: const Icon(TDIcons.user),
+                          controller: _inputController,
+                          hintText: '请输入账号',
+                        ),
                       ),
-                    ),
-                  ],
-                )
-              ),
+                      SizedBox(
+                        height: 34,
+                        child: TDInput(
+                          leftIcon: const Icon(TDIcons.lock_on),
+                          controller: _inputController,
+                          hintText: '请输入密码',
+                          obscureText: true,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TDText(
+                        pageWidthText,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ],
+                  )
+                ),
+              )
             ],
           );
         },
