@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 
+import 'acg_rss_page.dart';
+import 'nas_page.dart';
+import 'new_anime_page.dart';
+
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
   @override
   Widget build(BuildContext context) {
     final tools = <_ToolItem>[
-      const _ToolItem('待办清单', Icons.fact_check_outlined, Color(0xFF2563EB)),
-      const _ToolItem('灵感便签', Icons.lightbulb_outline_rounded, Color(0xFFF59E0B)),
-      const _ToolItem('番茄计时', Icons.timer_outlined, Color(0xFFEF4444)),
+      const _ToolItem('ACG RSS', Icons.rss_feed_rounded, Color(0xFF2563EB), builder: _buildAcgRssPage),
+      const _ToolItem('新番', Icons.movie_filter_outlined, Color(0xFFF59E0B), builder: _buildNewAnimePage),
+      const _ToolItem('NAS', Icons.storage_rounded, Color(0xFFEF4444), builder: _buildNasPage),
       const _ToolItem('日程提醒', Icons.notifications_active_outlined, Color(0xFF7C3AED)),
       const _ToolItem('AI 小助手', Icons.auto_awesome_rounded, Color(0xFF8B5CF6)),
       const _ToolItem('拍照扫描', Icons.document_scanner_rounded, Color(0xFF0EA5E9)),
@@ -138,7 +142,17 @@ class _ToolCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(28),
-          onTap: () {},
+          onTap: () {
+            final pageBuilder = tool.builder;
+            if (pageBuilder == null) {
+              return;
+            }
+
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: pageBuilder),
+            );
+          },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
             child: Column(
@@ -181,12 +195,24 @@ class _ToolCard extends StatelessWidget {
 }
 
 class _ToolItem {
-  const _ToolItem(this.title, this.icon, this.color);
+  const _ToolItem(
+    this.title,
+    this.icon,
+    this.color, {
+    this.builder,
+  });
 
   final String title;
   final IconData icon;
   final Color color;
+  final WidgetBuilder? builder;
 }
+
+Widget _buildAcgRssPage(BuildContext context) => const AcgRssPage();
+
+Widget _buildNewAnimePage(BuildContext context) => const NewAnimePage();
+
+Widget _buildNasPage(BuildContext context) => const NasPage();
 
 class _BlurOrb extends StatelessWidget {
   const _BlurOrb({
