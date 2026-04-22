@@ -212,7 +212,7 @@ Widget _buildAcgRssPage(BuildContext context) => const AcgRssPage();
 
 Widget _buildNewAnimePage(BuildContext context) => const NewAnimePage();
 
-Widget _buildNasPage(BuildContext context) => const NasPage();
+Widget _buildNasPage(BuildContext context) => NasPage();
 
 class _BlurOrb extends StatelessWidget {
   const _BlurOrb({

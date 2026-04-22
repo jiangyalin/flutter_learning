@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_learning/main.dart';
 import 'package:flutter_learning/pages/acg_rss_page.dart';
@@ -8,7 +9,50 @@ import 'package:flutter_learning/pages/nas_page.dart';
 import 'package:flutter_learning/pages/new_anime_page.dart';
 import 'package:flutter_learning/pages/new_anime_parser.dart';
 
+class _FakeNasClient implements NasClient {
+  _FakeNasClient(this.entries);
+
+  final List<NasFileEntry> entries;
+
+  @override
+  void setProgressListener(void Function(String message)? listener) {}
+
+  @override
+  Future<List<NasFileEntry>> login({
+    required String username,
+    required String password,
+    required String path,
+  }) async {
+    return entries;
+  }
+
+  @override
+  Future<List<NasFileEntry>?> restoreSession({required String path}) async {
+    return null;
+  }
+
+  @override
+  Future<List<NasFileEntry>> listDirectory({required String path}) async {
+    return entries;
+  }
+
+  @override
+  Future<List<NasDownloadTask>> listDownloadTasks() async {
+    return const [];
+  }
+
+  @override
+  Future<void> createDownloadTask({required String url}) async {}
+
+  @override
+  Future<void> logout() async {}
+}
+
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('home page shows personal lab portal', (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp());
     await tester.pumpAndSettle();
@@ -44,7 +88,55 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(NasPage), findsOneWidget);
-    expect(find.text('NAS'), findsWidgets);
+    expect(find.text('NAS 登录'), findsOneWidget);
+    expect(find.text('用户名'), findsOneWidget);
+    expect(find.text('密码'), findsOneWidget);
+    expect(find.text('登录'), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(2));
+  });
+
+  testWidgets('nas page logs in and enters file manager', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NasPage(
+          client: _FakeNasClient([
+            const NasFileEntry(
+              name: '项目资料',
+              path: '/home/Drive/项目资料',
+              isDirectory: true,
+              modifiedAtLabel: '2026-04-22 10:30',
+            ),
+            const NasFileEntry(
+              name: 'README.md',
+              path: '/home/Drive/README.md',
+              isDirectory: false,
+              sizeLabel: '12.0 KB',
+              modifiedAtLabel: '2026-04-21 18:20',
+            ),
+          ]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, '用户名'), 'admin');
+    await tester.enterText(find.widgetWithText(TextField, '密码'), '123456');
+    await tester.tap(find.text('登录'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('文件管理'), findsOneWidget);
+    expect(find.text('下载管理'), findsOneWidget);
+
+    await tester.tap(find.text('文件管理'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('共享目录'), findsOneWidget);
+    expect(find.text('文件目录'), findsOneWidget);
+    expect(find.text('项目资料'), findsOneWidget);
+    expect(find.text('README.md'), findsOneWidget);
   });
 
   testWidgets('acg rss page auto loads and shows search field', (
