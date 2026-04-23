@@ -1,17 +1,21 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart';
 
+import '../services/acg_rss_detail_service.dart';
+import '../services/acg_rss_service.dart';
 import 'acg_rss_detail_page.dart';
+import 'acg_rss_detail_parser.dart';
 import 'acg_rss_parser.dart';
 
-typedef AcgRssLoader =
-    Future<List<AcgRssTopic>> Function({
-      required int page,
-      required String keyword,
-    });
+typedef AcgRssLoader = Future<List<AcgRssTopic>> Function({
+  required int page,
+  required String keyword,
+});
 typedef AcgRssDetailPageBuilder = Widget Function(AcgRssTopic topic);
+typedef AcgRssQuickDetailLoader = Future<AcgRssDetail> Function({
+  required String detailUrl,
+});
+typedef AcgRssClipboardSetter = Future<void> Function(String text);
 
 class AcgRssPage extends StatefulWidget {
   const AcgRssPage({
@@ -19,37 +23,33 @@ class AcgRssPage extends StatefulWidget {
     this.loader = _fetchTopicsFromNetwork,
     this.initialKeyword = '',
     this.detailPageBuilder = _buildDetailPage,
+    this.detailLoader = _fetchDetailFromNetwork,
+    this.clipboardSetter = _copyToClipboard,
   });
 
   final AcgRssLoader loader;
   final String initialKeyword;
   final AcgRssDetailPageBuilder detailPageBuilder;
+  final AcgRssQuickDetailLoader detailLoader;
+  final AcgRssClipboardSetter clipboardSetter;
 
   static Future<List<AcgRssTopic>> _fetchTopicsFromNetwork({
     required int page,
     required String keyword,
-  }) async {
-    const baseHost = 'd.acg2.icu';
-    const basePath = '/topics/list';
-    const order = 'date-desc';
-
-    final path = page <= 1 ? basePath : '$basePath/page/$page';
-    final query = <String, String>{'order': order};
-    if (keyword.trim().isNotEmpty) {
-      query['keyword'] = keyword.trim();
-    }
-
-    final response = await http.get(Uri.https(baseHost, path, query));
-    if (response.statusCode != 200) {
-      throw Exception('请求失败: ${response.statusCode}');
-    }
-
-    final html = utf8.decode(response.bodyBytes);
-    return parseAcgRssTopics(html);
-  }
+  }) =>
+      const AcgRssService().fetchTopics(page: page, keyword: keyword);
 
   static Widget _buildDetailPage(AcgRssTopic topic) {
     return AcgRssDetailPage(topic: topic);
+  }
+
+  static Future<AcgRssDetail> _fetchDetailFromNetwork({
+    required String detailUrl,
+  }) =>
+      const AcgRssDetailService().fetchDetail(detailUrl: detailUrl);
+
+  static Future<void> _copyToClipboard(String text) {
+    return Clipboard.setData(ClipboardData(text: text));
   }
 
   @override
@@ -69,6 +69,7 @@ class _AcgRssPageState extends State<AcgRssPage> {
   List<AcgRssTopic> _topics = const [];
   int _currentPage = 0;
   String _activeKeyword = '';
+  final Set<String> _quickCopyingTopicKeys = {};
 
   @override
   void initState() {
@@ -77,8 +78,24 @@ class _AcgRssPageState extends State<AcgRssPage> {
     _keywordController = TextEditingController(text: _activeKeyword);
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _fetchTopics();
+      if (!mounted) {
+        return;
+      }
+      _fetchTopics(keyword: widget.initialKeyword);
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant AcgRssPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextKeyword = widget.initialKeyword.trim();
+    if (nextKeyword == oldWidget.initialKeyword.trim() ||
+        nextKeyword == _activeKeyword) {
+      return;
+    }
+
+    _keywordController.text = nextKeyword;
+    _fetchTopics(keyword: nextKeyword);
   }
 
   @override
@@ -90,7 +107,16 @@ class _AcgRssPageState extends State<AcgRssPage> {
     super.dispose();
   }
 
-  Future<void> _fetchTopics() async {
+  Future<void> _fetchTopics({String? keyword}) async {
+    final nextKeyword = (keyword ?? _keywordController.text).trim();
+    if (nextKeyword != _activeKeyword) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _activeKeyword = nextKeyword;
+      });
+    }
     await _fetchPage(reset: true);
   }
 
@@ -121,6 +147,9 @@ class _AcgRssPageState extends State<AcgRssPage> {
         page: targetPage,
         keyword: _activeKeyword,
       );
+      if (!mounted) {
+        return;
+      }
       final mergedTopics = reset ? topics : _mergeTopics(_topics, topics);
 
       setState(() {
@@ -132,6 +161,9 @@ class _AcgRssPageState extends State<AcgRssPage> {
             : null;
       });
     } catch (error) {
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _errorMessage = '获取失败：$error';
       });
@@ -154,8 +186,8 @@ class _AcgRssPageState extends State<AcgRssPage> {
     }
 
     final position = _scrollController.position;
-    final shouldLoadMore = position.maxScrollExtent - position.pixels <=
-        _scrollThreshold;
+    final shouldLoadMore =
+        position.maxScrollExtent - position.pixels <= _scrollThreshold;
 
     if (shouldLoadMore) {
       _fetchNextPage();
@@ -172,7 +204,7 @@ class _AcgRssPageState extends State<AcgRssPage> {
     setState(() {
       _activeKeyword = nextKeyword;
     });
-    _fetchTopics();
+    _fetchTopics(keyword: nextKeyword);
   }
 
   void _clearSearch() {
@@ -184,7 +216,7 @@ class _AcgRssPageState extends State<AcgRssPage> {
     setState(() {
       _activeKeyword = '';
     });
-    _fetchTopics();
+    _fetchTopics(keyword: '');
   }
 
   List<AcgRssTopic> _mergeTopics(
@@ -307,9 +339,12 @@ class _AcgRssPageState extends State<AcgRssPage> {
         }
 
         final topic = _topics[index];
+        final topicKey = _topicKey(topic);
         return _TopicCard(
           topic: topic,
+          isQuickCopying: _quickCopyingTopicKeys.contains(topicKey),
           onTap: () => _openDetailPage(topic),
+          onQuickCopy: () => _quickCopyMagnet(topic),
         );
       },
     );
@@ -321,6 +356,77 @@ class _AcgRssPageState extends State<AcgRssPage> {
         builder: (_) => widget.detailPageBuilder(topic),
       ),
     );
+  }
+
+  Future<void> _quickCopyMagnet(AcgRssTopic topic) async {
+    final topicKey = _topicKey(topic);
+    if (_quickCopyingTopicKeys.contains(topicKey)) {
+      return;
+    }
+
+    setState(() {
+      _quickCopyingTopicKeys.add(topicKey);
+    });
+
+    try {
+      final detail = await widget.detailLoader(detailUrl: topic.detailUrl);
+      final magnet = _findPrimaryMagnetLink(detail.links);
+      if (magnet == null) {
+        throw Exception('没有解析到 Magnet连接');
+      }
+
+      await widget.clipboardSetter(magnet.url);
+      if (!mounted) {
+        return;
+      }
+      _showSnackBar('已复制${magnet.label}');
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showSnackBar('快速取链失败：$error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _quickCopyingTopicKeys.remove(topicKey);
+        });
+      }
+    }
+  }
+
+  AcgRssDownloadLink? _findPrimaryMagnetLink(List<AcgRssDownloadLink> links) {
+    for (final link in links) {
+      if (link.url.startsWith('magnet:') &&
+          (link.label == 'Magnet連接' || link.label == 'Magnet连接')) {
+        return link;
+      }
+    }
+
+    for (final link in links) {
+      if (link.url.startsWith('magnet:') &&
+          !link.label.toLowerCase().contains('typeii')) {
+        return link;
+      }
+    }
+
+    for (final link in links) {
+      if (link.url.startsWith('magnet:')) {
+        return link;
+      }
+    }
+
+    return null;
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   Widget _buildLoadMoreFooter() {
@@ -353,11 +459,15 @@ class _AcgRssPageState extends State<AcgRssPage> {
 class _TopicCard extends StatefulWidget {
   const _TopicCard({
     required this.topic,
+    required this.isQuickCopying,
     required this.onTap,
+    required this.onQuickCopy,
   });
 
   final AcgRssTopic topic;
+  final bool isQuickCopying;
   final VoidCallback onTap;
+  final VoidCallback onQuickCopy;
 
   @override
   State<_TopicCard> createState() => _TopicCardState();
@@ -475,21 +585,50 @@ class _TopicCardState extends State<_TopicCard> {
               const SizedBox(height: 6),
               Align(
                 alignment: Alignment.centerRight,
-                child: OutlinedButton.icon(
-                  onPressed: widget.onTap,
-                  icon: const Icon(Icons.link_rounded, size: 16),
-                  label: const Text('取链'),
-                  style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed:
+                          widget.isQuickCopying ? null : widget.onQuickCopy,
+                      icon: widget.isQuickCopying
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.content_copy_rounded, size: 16),
+                      label: const Text('快速取链'),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                    textStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                    OutlinedButton.icon(
+                      onPressed: widget.onTap,
+                      icon: const Icon(Icons.link_rounded, size: 16),
+                      label: const Text('取链'),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ],

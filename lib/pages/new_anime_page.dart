@@ -1,9 +1,8 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
+import '../services/new_anime_service.dart';
 import 'acg_rss_page.dart';
+import 'nas_page.dart';
 import 'new_anime_parser.dart';
 
 class NewAnimePage extends StatefulWidget {
@@ -11,34 +10,25 @@ class NewAnimePage extends StatefulWidget {
     super.key,
     this.loader = _fetchAnimeSchedule,
     this.rssPageBuilder = _buildRssPage,
+    this.nasPageBuilder = _buildNasPage,
   });
 
   final Future<AnimeScheduleCollection> Function() loader;
   final Widget Function(String keyword) rssPageBuilder;
+  final Widget Function(String destination) nasPageBuilder;
 
-  static Future<AnimeScheduleCollection> _fetchAnimeSchedule() async {
-    final response = await http.get(
-      Uri.parse(
-        'https://baike.baidu.com/item/%E5%8A%A8%E7%94%BB%E6%96%B0%E7%95%AA/22725827',
-      ),
-      headers: const {
-        'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
-                '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-      },
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception('请求失败: ${response.statusCode}');
-    }
-
-    final html = utf8.decode(response.bodyBytes);
-    return parseAnimeScheduleCollection(html);
-  }
+  static Future<AnimeScheduleCollection> _fetchAnimeSchedule() =>
+      const NewAnimeService().fetchAnimeSchedule();
 
   static Widget _buildRssPage(String keyword) {
     return AcgRssPage(initialKeyword: keyword);
+  }
+
+  static Widget _buildNasPage(String destination) {
+    return NasPage(
+      openDownloadManagerOnReady: true,
+      initialDownloadDestination: destination,
+    );
   }
 
   @override
@@ -96,6 +86,22 @@ class _NewAnimePageState extends State<NewAnimePage> {
     );
   }
 
+  void _openNasDownloadManager({
+    required String title,
+    required String timeText,
+  }) {
+    final quarter = _formatQuarterPathSegment(timeText);
+    if (quarter == null) {
+      return;
+    }
+    final destination = '/video/BD/$quarter/$title';
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => widget.nasPageBuilder(destination),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -142,6 +148,7 @@ class _NewAnimePageState extends State<NewAnimePage> {
           _YearSection(
             year: year,
             onOpenRss: _openRssPage,
+            onOpenNas: _openNasDownloadManager,
           ),
           const SizedBox(height: 12),
         ],
@@ -154,10 +161,15 @@ class _YearSection extends StatelessWidget {
   const _YearSection({
     required this.year,
     required this.onOpenRss,
+    required this.onOpenNas,
   });
 
   final AnimeScheduleYear year;
   final ValueChanged<String> onOpenRss;
+  final void Function({
+    required String title,
+    required String timeText,
+  }) onOpenNas;
 
   @override
   Widget build(BuildContext context) {
@@ -184,6 +196,7 @@ class _YearSection extends StatelessWidget {
             _PeriodSection(
               period: year.periods[index],
               onOpenRss: onOpenRss,
+              onOpenNas: onOpenNas,
             ),
             if (index != year.periods.length - 1) const SizedBox(height: 10),
           ],
@@ -197,10 +210,15 @@ class _PeriodSection extends StatelessWidget {
   const _PeriodSection({
     required this.period,
     required this.onOpenRss,
+    required this.onOpenNas,
   });
 
   final AnimeSchedulePeriod period;
   final ValueChanged<String> onOpenRss;
+  final void Function({
+    required String title,
+    required String timeText,
+  }) onOpenNas;
 
   @override
   Widget build(BuildContext context) {
@@ -220,6 +238,7 @@ class _PeriodSection extends StatelessWidget {
           _GroupSection(
             group: period.groups[index],
             onOpenRss: onOpenRss,
+            onOpenNas: onOpenNas,
           ),
           if (index != period.groups.length - 1) const SizedBox(height: 10),
         ],
@@ -232,10 +251,15 @@ class _GroupSection extends StatelessWidget {
   const _GroupSection({
     required this.group,
     required this.onOpenRss,
+    required this.onOpenNas,
   });
 
   final AnimeScheduleGroup group;
   final ValueChanged<String> onOpenRss;
+  final void Function({
+    required String title,
+    required String timeText,
+  }) onOpenNas;
 
   @override
   Widget build(BuildContext context) {
@@ -269,6 +293,7 @@ class _GroupSection extends StatelessWidget {
             columns: group.columns,
             entry: entry,
             onOpenRss: onOpenRss,
+            onOpenNas: onOpenNas,
           ),
           const SizedBox(height: 6),
         ],
@@ -282,11 +307,16 @@ class _AnimeEntryCard extends StatelessWidget {
     required this.columns,
     required this.entry,
     required this.onOpenRss,
+    required this.onOpenNas,
   });
 
   final List<String> columns;
   final AnimeScheduleEntry entry;
   final ValueChanged<String> onOpenRss;
+  final void Function({
+    required String title,
+    required String timeText,
+  }) onOpenNas;
 
   @override
   Widget build(BuildContext context) {
@@ -296,6 +326,7 @@ class _AnimeEntryCard extends StatelessWidget {
         timeIndex >= 0 && timeIndex < entry.values.length ? entry.values[timeIndex] : '';
     final title = titleIndex < entry.values.length ? entry.values[titleIndex] : '-';
     final airStatus = _resolveAirStatus(timeText);
+    final canOpenNas = _isBeforeToday(timeText);
 
     final detailPairs = <MapEntry<String, String>>[];
     for (var index = 0; index < columns.length && index < entry.values.length; index++) {
@@ -377,7 +408,11 @@ class _AnimeEntryCard extends StatelessWidget {
                 label: 'NAS',
                 backgroundColor: const Color(0xFFECFDF3),
                 foregroundColor: const Color(0xFF027A48),
-                onTap: () => _showActionHint(context, 'NAS', title),
+                disabledBackgroundColor: const Color(0xFFF2F4F7),
+                disabledForegroundColor: const Color(0xFF98A2B3),
+                onTap: canOpenNas
+                    ? () => onOpenNas(title: title, timeText: timeText)
+                    : null,
               ),
             ],
           ),
@@ -387,29 +422,22 @@ class _AnimeEntryCard extends StatelessWidget {
   }
 }
 
-void _showActionHint(BuildContext context, String action, String title) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(
-        content: Text('$action: $title'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-}
-
 class _ActionButton extends StatelessWidget {
   const _ActionButton({
     required this.label,
     required this.backgroundColor,
     required this.foregroundColor,
+    this.disabledBackgroundColor,
+    this.disabledForegroundColor,
     required this.onTap,
   });
 
   final String label;
   final Color backgroundColor;
   final Color foregroundColor;
-  final VoidCallback onTap;
+  final Color? disabledBackgroundColor;
+  final Color? disabledForegroundColor;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -421,6 +449,8 @@ class _ActionButton extends StatelessWidget {
         style: FilledButton.styleFrom(
           backgroundColor: backgroundColor,
           foregroundColor: foregroundColor,
+          disabledBackgroundColor: disabledBackgroundColor,
+          disabledForegroundColor: disabledForegroundColor,
           elevation: 0,
           padding: EdgeInsets.zero,
           minimumSize: const Size(48, 26),
@@ -458,36 +488,54 @@ class _AirStatus {
 }
 
 _AirStatus _resolveAirStatus(String timeText) {
+  final date = _parseScheduleDate(timeText);
+  return date == null ? _unknownStatus() : _fromDate(date);
+}
+
+bool _isBeforeToday(String timeText) {
+  final date = _parseScheduleDate(timeText);
+  if (date == null) {
+    return false;
+  }
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  return date.isBefore(today);
+}
+
+String? _formatQuarterPathSegment(String timeText) {
+  final date = _parseScheduleDate(timeText);
+  if (date == null) {
+    return null;
+  }
+  final quarterStartMonth = ((date.month - 1) ~/ 3) * 3 + 1;
+  return '${date.year}-${quarterStartMonth.toString().padLeft(2, '0')}';
+}
+
+DateTime? _parseScheduleDate(String timeText) {
   final normalized = timeText.trim();
   if (normalized.isEmpty) {
-    return _unknownStatus();
+    return null;
   }
 
   final exactDayMatch = RegExp(r'^(\d{4})年(\d{1,2})月(\d{1,2})日$').firstMatch(normalized);
   if (exactDayMatch != null) {
-    final date = DateTime(
+    return DateTime(
       int.parse(exactDayMatch.group(1)!),
       int.parse(exactDayMatch.group(2)!),
       int.parse(exactDayMatch.group(3)!),
     );
-    return _fromDate(date);
   }
 
   final monthMatch = RegExp(r'^(\d{4})年(\d{1,2})月$').firstMatch(normalized);
   if (monthMatch != null) {
-    final date = DateTime(
+    return DateTime(
       int.parse(monthMatch.group(1)!),
       int.parse(monthMatch.group(2)!),
       1,
     );
-    return _fromDate(date);
   }
 
-  if (RegExp(r'^\d{4}年$').hasMatch(normalized)) {
-    return _unknownStatus();
-  }
-
-  return _unknownStatus();
+  return null;
 }
 
 _AirStatus _fromDate(DateTime date) {

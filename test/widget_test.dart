@@ -3,7 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_learning/main.dart';
+import 'package:flutter_learning/features/nas/data/nas_client.dart';
+import 'package:flutter_learning/features/nas/models/nas_models.dart';
 import 'package:flutter_learning/pages/acg_rss_page.dart';
+import 'package:flutter_learning/pages/acg_rss_detail_parser.dart';
 import 'package:flutter_learning/pages/acg_rss_parser.dart';
 import 'package:flutter_learning/pages/nas_page.dart';
 import 'package:flutter_learning/pages/new_anime_page.dart';
@@ -42,7 +45,19 @@ class _FakeNasClient implements NasClient {
   }
 
   @override
-  Future<void> createDownloadTask({required String url}) async {}
+  Future<void> createFolder({
+    required String parentPath,
+    required String folderName,
+  }) async {}
+
+  @override
+  Future<void> createDownloadTask({
+    required String destination,
+    required String url,
+  }) async {}
+
+  @override
+  Future<void> deleteDownloadTask({required String taskId}) async {}
 
   @override
   Future<void> logout() async {}
@@ -53,7 +68,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('home page shows personal lab portal', (WidgetTester tester) async {
+  testWidgets('home page shows personal lab portal',
+      (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp());
     await tester.pumpAndSettle();
 
@@ -176,6 +192,48 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
     expect(find.text('输入关键字搜索'), findsOneWidget);
     expect(find.text('测试动画'), findsOneWidget);
+  });
+
+  testWidgets('acg rss page searches with initial keyword on first open', (
+    WidgetTester tester,
+  ) async {
+    final searchedKeywords = <String>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AcgRssPage(
+          initialKeyword: '测试新番',
+          loader: ({required page, required keyword}) async {
+            searchedKeywords.add(keyword);
+            return const [
+              AcgRssTopic(
+                postedAt: '2026/04/22 10:00',
+                category: '動畫',
+                team: '测试字幕组',
+                rawTitle: '测试标题',
+                animeName: '测试新番',
+                episode: '01',
+                resolution: '1080P',
+                subtitleLanguage: '简繁',
+                detailUrl: '/topics/view/test.html',
+                magnetUrl: 'magnet:?xt=urn:btih:test',
+                size: '500MB',
+                seeders: '1',
+                downloads: '2',
+                completed: '3',
+                publisher: 'tester',
+                comments: '',
+              ),
+            ];
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(searchedKeywords, contains('测试新番'));
+    expect(find.text('测试新番'), findsNWidgets(2));
   });
 
   testWidgets('acg rss topic card opens detail page', (
@@ -311,6 +369,71 @@ void main() {
     expect(find.text('/topics/view/test-button.html'), findsOneWidget);
   });
 
+  testWidgets('acg rss quick link button copies primary magnet link', (
+    WidgetTester tester,
+  ) async {
+    String? copiedText;
+    const sampleTopics = [
+      AcgRssTopic(
+        postedAt: '2026/04/22 10:00',
+        category: '動畫',
+        team: '测试字幕组',
+        rawTitle: '测试标题',
+        animeName: '测试动画',
+        episode: '01',
+        resolution: '1080P',
+        subtitleLanguage: '简繁',
+        detailUrl: '/topics/view/test-quick.html',
+        magnetUrl: 'magnet:?xt=urn:btih:list',
+        size: '500MB',
+        seeders: '1',
+        downloads: '2',
+        completed: '3',
+        publisher: 'tester',
+        comments: '',
+      ),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AcgRssPage(
+          loader: ({required page, required keyword}) async => sampleTopics,
+          detailLoader: ({required detailUrl}) async => const AcgRssDetail(
+            title: '测试标题',
+            postedAt: '2026/04/22 10:00',
+            size: '500MB',
+            links: [
+              AcgRssDownloadLink(
+                label: '會員專用連接',
+                url: 'https://dl.dmhy.org/test.torrent',
+              ),
+              AcgRssDownloadLink(
+                label: 'Magnet連接',
+                url: 'magnet:?xt=urn:btih:PRIMARY',
+              ),
+              AcgRssDownloadLink(
+                label: 'Magnet連接typeII',
+                url: 'magnet:?xt=urn:btih:TYPE2',
+              ),
+            ],
+          ),
+          clipboardSetter: (text) async {
+            copiedText = text;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('快速取链'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(copiedText, 'magnet:?xt=urn:btih:PRIMARY');
+    expect(find.text('已复制Magnet連接'), findsOneWidget);
+  });
+
   testWidgets('new anime page opens from home', (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp());
     await tester.pumpAndSettle();
@@ -418,4 +541,87 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
   });
 
+  testWidgets('new anime nas button is disabled for future titles', (
+    WidgetTester tester,
+  ) async {
+    const sampleSchedule = AnimeScheduleCollection(
+      years: [
+        AnimeScheduleYear(
+          title: '2027年新番',
+          periods: [
+            AnimeSchedulePeriod(
+              title: '2027年1月冬季',
+              groups: [
+                AnimeScheduleGroup(
+                  title: 'TV动画',
+                  columns: ['播放时间', 'TV动画', '话数'],
+                  entries: [
+                    AnimeScheduleEntry(values: ['2027年1月2日', '未来新番', '-']),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NewAnimePage(
+          loader: () async => sampleSchedule,
+          nasPageBuilder: (destination) => Scaffold(body: Text(destination)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('NAS'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('/video/BD/2027-01/未来新番'), findsNothing);
+  });
+
+  testWidgets(
+      'new anime nas button opens download manager destination for past titles',
+      (
+    WidgetTester tester,
+  ) async {
+    const sampleSchedule = AnimeScheduleCollection(
+      years: [
+        AnimeScheduleYear(
+          title: '2026年新番',
+          periods: [
+            AnimeSchedulePeriod(
+              title: '2026年1月冬季',
+              groups: [
+                AnimeScheduleGroup(
+                  title: 'TV动画',
+                  columns: ['播放时间', 'TV动画', '话数'],
+                  entries: [
+                    AnimeScheduleEntry(values: ['2026年1月2日', '过去新番', '-']),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NewAnimePage(
+          loader: () async => sampleSchedule,
+          nasPageBuilder: (destination) => Scaffold(body: Text(destination)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('NAS'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('/video/BD/2026-01/过去新番'), findsOneWidget);
+  });
 }

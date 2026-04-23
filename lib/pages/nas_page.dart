@@ -6,211 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class SynologyApiException implements Exception {
-  const SynologyApiException(this.message, {this.code});
-
-  final String message;
-  final int? code;
-
-  @override
-  String toString() => code == null ? message : '$message (code: $code)';
-}
-
-class NasFileEntry {
-  const NasFileEntry({
-    required this.name,
-    required this.path,
-    required this.isDirectory,
-    this.sizeLabel,
-    this.modifiedAtLabel,
-  });
-
-  final String name;
-  final String path;
-  final bool isDirectory;
-  final String? sizeLabel;
-  final String? modifiedAtLabel;
-
-  factory NasFileEntry.fromJson(Map<String, dynamic> json) {
-    final additional = json['additional'];
-    final timeInfo =
-        additional is Map<String, dynamic> ? additional['time'] : null;
-
-    return NasFileEntry(
-      name: (json['name'] ?? '').toString(),
-      path: (json['path'] ?? '').toString(),
-      isDirectory: json['isdir'] == true,
-      sizeLabel: _formatSizeLabel(additional),
-      modifiedAtLabel: _formatModifiedLabel(timeInfo),
-    );
-  }
-
-  static String? _formatSizeLabel(dynamic additional) {
-    if (additional is! Map<String, dynamic>) {
-      return null;
-    }
-
-    final size = additional['size'];
-    if (size is! num || size <= 0) {
-      return null;
-    }
-
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    var value = size.toDouble();
-    var index = 0;
-    while (value >= 1024 && index < units.length - 1) {
-      value /= 1024;
-      index++;
-    }
-
-    final text =
-        value >= 100 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
-    return '$text ${units[index]}';
-  }
-
-  static String? _formatModifiedLabel(dynamic timeInfo) {
-    if (timeInfo is! Map<String, dynamic>) {
-      return null;
-    }
-
-    final mtime = timeInfo['mtime'];
-    if (mtime is! num || mtime <= 0) {
-      return null;
-    }
-
-    final time = DateTime.fromMillisecondsSinceEpoch(
-      (mtime * 1000).toInt(),
-    ).toLocal();
-
-    String twoDigits(int value) => value.toString().padLeft(2, '0');
-
-    return '${time.year}-${twoDigits(time.month)}-${twoDigits(time.day)} '
-        '${twoDigits(time.hour)}:${twoDigits(time.minute)}';
-  }
-}
-
-class NasDownloadTask {
-  const NasDownloadTask({
-    required this.id,
-    required this.title,
-    required this.status,
-    required this.type,
-    this.sizeLabel,
-    this.downloadedLabel,
-    this.speedLabel,
-    this.destination,
-    this.username,
-  });
-
-  final String id;
-  final String title;
-  final String status;
-  final String type;
-  final String? sizeLabel;
-  final String? downloadedLabel;
-  final String? speedLabel;
-  final String? destination;
-  final String? username;
-
-  factory NasDownloadTask.fromJson(Map<String, dynamic> json) {
-    final additional =
-        json['additional'] is Map<String, dynamic>
-            ? json['additional'] as Map<String, dynamic>
-            : const <String, dynamic>{};
-    final detail =
-        additional['detail'] is Map<String, dynamic>
-            ? additional['detail'] as Map<String, dynamic>
-            : const <String, dynamic>{};
-    final transfer =
-        additional['transfer'] is Map<String, dynamic>
-            ? additional['transfer'] as Map<String, dynamic>
-            : const <String, dynamic>{};
-
-    final totalSize =
-        json['size'] is num ? (json['size'] as num).toDouble() : null;
-    final sizeDownloaded =
-        transfer['size_downloaded'] is num
-            ? (transfer['size_downloaded'] as num).toDouble()
-            : null;
-    final speedDownload =
-        transfer['speed_download'] is num
-            ? (transfer['speed_download'] as num).toDouble()
-            : null;
-
-    return NasDownloadTask(
-      id: (json['id'] ?? '').toString(),
-      title: (json['title'] ?? '未命名任务').toString(),
-      status: (json['status'] ?? 'unknown').toString(),
-      type: (json['type'] ?? 'unknown').toString(),
-      sizeLabel: _formatBytes(totalSize),
-      downloadedLabel: _formatBytes(sizeDownloaded),
-      speedLabel: speedDownload == null ? null : '${_formatBytes(speedDownload)}/s',
-      destination: detail['destination']?.toString(),
-      username: json['username']?.toString(),
-    );
-  }
-
-  String get statusLabel {
-    switch (status) {
-      case 'downloading':
-        return '下载中';
-      case 'paused':
-        return '已暂停';
-      case 'waiting':
-        return '等待中';
-      case 'finishing':
-        return '整理中';
-      case 'seeding':
-        return '做种中';
-      case 'finished':
-        return '已完成';
-      case 'hash_checking':
-        return '校验中';
-      case 'extracting':
-        return '解压中';
-      case 'error':
-        return '失败';
-      default:
-        return status;
-    }
-  }
-
-  static String? _formatBytes(double? size) {
-    if (size == null || size <= 0) {
-      return null;
-    }
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    var value = size;
-    var index = 0;
-    while (value >= 1024 && index < units.length - 1) {
-      value /= 1024;
-      index++;
-    }
-    final text =
-        value >= 100 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
-    return '$text ${units[index]}';
-  }
-}
-
-abstract class NasClient {
-  void setProgressListener(void Function(String message)? listener);
-
-  Future<List<NasFileEntry>> login({
-    required String username,
-    required String password,
-    required String path,
-  });
-
-  Future<List<NasFileEntry>?> restoreSession({required String path});
-
-  Future<List<NasFileEntry>> listDirectory({required String path});
-
-  Future<List<NasDownloadTask>> listDownloadTasks();
-
-  Future<void> createDownloadTask({required String url});
-
-  Future<void> logout();
-}
+import '../features/nas/data/nas_client.dart';
+import '../features/nas/models/nas_models.dart';
 
 class SynologyNasClient implements NasClient {
   static const String sharedRootPath = '@shared_root';
@@ -220,23 +17,21 @@ class SynologyNasClient implements NasClient {
   static const String _prefsKeyDid = 'nas.did';
   static const String _prefsKeyCookies = 'nas.cookies';
   static const String _prefsKeyLastUsername = 'nas.last_username';
-  static const String _prefsKeyLastPassword = 'nas.last_password';
+  static const String _prefsKeyNetworkFingerprint = 'nas.network_fingerprint';
 
   SynologyNasClient({
     HttpClient? httpClient,
     Uri? quickConnectUri,
     Uri? quickConnectApiUri,
-  }) : _httpClient =
-           httpClient ??
-           (HttpClient()
-             ..connectionTimeout = const Duration(seconds: 10)
-             ..badCertificateCallback =
-                 (X509Certificate _, String __, int ___) => true),
-       _quickConnectUri =
-           quickConnectUri ??
-           Uri.parse('https://jyl18725944157.cn6.quickconnect.cn'),
-       _quickConnectApiUri =
-           quickConnectApiUri ?? Uri.parse('https://global.quickconnect.to/Serv.php');
+  })  : _httpClient = httpClient ??
+            (HttpClient()
+              ..connectionTimeout = const Duration(seconds: 10)
+              ..badCertificateCallback =
+                  (X509Certificate _, String __, int ___) => true),
+        _quickConnectUri = quickConnectUri ??
+            Uri.parse('https://jyl18725944157.cn6.quickconnect.cn'),
+        _quickConnectApiUri = quickConnectApiUri ??
+            Uri.parse('https://global.quickconnect.to/Serv.php');
 
   final HttpClient _httpClient;
   final Uri _quickConnectUri;
@@ -251,9 +46,13 @@ class SynologyNasClient implements NasClient {
   String? _did;
   String? _lastUsername;
   String? _lastPassword;
+  String? _lastNetworkFingerprint;
   String? _downloadStationSid;
+  String? _fileStationSid;
   String? _downloadTaskApiPath;
   int? _downloadTaskApiVersion;
+  String? _createFolderApiPath;
+  int? _createFolderApiVersion;
   Future<void>? _restoreFuture;
   bool _prefsUnavailable = false;
   void Function(String message)? _progressListener;
@@ -301,19 +100,11 @@ class SynologyNasClient implements NasClient {
   Future<List<NasFileEntry>?> restoreSession({required String path}) async {
     _reportProgress('正在恢复本地会话');
     await _restorePersistedSession();
-    if (!_hasSession && !_hasSavedCredentials) {
+    if (!_hasSession) {
       return null;
     }
 
     try {
-      if (!_hasSession && _hasSavedCredentials) {
-        _reportProgress('本地会话不可用，尝试自动登录');
-        await _authenticate(
-          username: _lastUsername!,
-          password: _lastPassword!,
-          forceResolveBaseUri: _resolvedBaseUri == null,
-        );
-      }
       return await listDirectory(path: path);
     } catch (_) {
       return null;
@@ -363,14 +154,92 @@ class SynologyNasClient implements NasClient {
   }
 
   @override
-  Future<void> createDownloadTask({required String url}) async {
+  Future<void> createFolder({
+    required String parentPath,
+    required String folderName,
+  }) async {
+    _reportProgress('正在创建文件夹');
+    await _restorePersistedSession();
+    if (_synoToken == null || _synoToken!.isEmpty) {
+      throw const SynologyApiException('尚未登录');
+    }
+
+    final sanitizedParentPath = _normalizeParentPath(parentPath);
+    final sanitizedFolderName = folderName.trim();
+    if (sanitizedFolderName.isEmpty) {
+      throw const SynologyApiException('文件夹名称不能为空');
+    }
+    if (sanitizedFolderName == '.' || sanitizedFolderName == '..') {
+      throw const SynologyApiException('文件夹名称不合法');
+    }
+    if (sanitizedFolderName.contains('/')) {
+      throw const SynologyApiException('文件夹名称不能包含 /');
+    }
+
+    final targetPath = sanitizedParentPath == '/'
+        ? '/$sanitizedFolderName'
+        : '$sanitizedParentPath/$sanitizedFolderName';
+    if (await _checkFolderExists(targetPath)) {
+      throw const SynologyApiException('文件夹已存在', code: 409);
+    }
+
+    try {
+      await _createFolder(
+        parentPath: sanitizedParentPath,
+        folderName: sanitizedFolderName,
+      );
+    } on SynologyApiException catch (error) {
+      if (<int>{101, 119}.contains(error.code)) {
+        final exists = await _waitAndCheckFolderExists(targetPath);
+        if (exists) {
+          return;
+        }
+      }
+      rethrow;
+    }
+
+    final created = await _waitAndCheckFolderExists(targetPath);
+    if (!created) {
+      throw SynologyApiException('创建文件夹后仍不可访问：$targetPath');
+    }
+  }
+
+  @override
+  Future<void> createDownloadTask({
+    required String destination,
+    required String url,
+  }) async {
     _reportProgress('正在创建下载任务');
     await _restorePersistedSession();
+
+    final normalizedDestination = _normalizeDownloadDestination(destination);
+    final ensuredAbsoluteDestination = await _ensureDownloadDestinationFolder(
+      normalizedDestination.absolutePath,
+    );
+    final usableDownloadStationDestination =
+        ensuredAbsoluteDestination.startsWith('/')
+            ? ensuredAbsoluteDestination.substring(1)
+            : ensuredAbsoluteDestination;
 
     final apiInfo = await _getDownloadTaskApiInfo();
     await _createDownloadTaskWithRetry(
       apiInfo: apiInfo,
+      destination: usableDownloadStationDestination,
+      fallbackDestination: ensuredAbsoluteDestination,
       url: url,
+      allowReauth: true,
+    );
+  }
+
+  @override
+  Future<void> deleteDownloadTask({required String taskId}) async {
+    _reportProgress('正在删除下载任务');
+    await _restorePersistedSession();
+
+    final apiInfo = await _getDownloadTaskApiInfo();
+    await _deleteDownloadTaskWithRetry(
+      apiInfo: apiInfo,
+      taskId: taskId,
       allowReauth: true,
     );
   }
@@ -418,7 +287,7 @@ class SynologyNasClient implements NasClient {
           'additional': 'detail,transfer',
           'offset': '0',
           'limit': '1000',
-          'sid': activeSid,
+          '_sid': activeSid,
         },
       );
       final success = body['success'] == true;
@@ -438,12 +307,13 @@ class SynologyNasClient implements NasClient {
           .map(NasDownloadTask.fromJson)
           .toList();
     } on SynologyApiException catch (error) {
-      final needsDedicatedSession =
-          _downloadStationSid == null && <int>{101, 102, 103, 104}.contains(error.code);
+      final needsDedicatedSession = _downloadStationSid == null &&
+          <int>{101, 102, 103, 104}.contains(error.code);
       if (allowReauth &&
           (_isSessionExpired(error) || needsDedicatedSession) &&
           _hasSavedCredentials) {
-        debugPrint('NAS Download Station session unavailable, re-authenticating');
+        debugPrint(
+            'NAS Download Station session unavailable, re-authenticating');
         _downloadStationSid = null;
         await _ensureDownloadStationSession(forceRelogin: true);
         return _listDownloadTasksWithRetry(
@@ -457,6 +327,8 @@ class SynologyNasClient implements NasClient {
 
   Future<void> _createDownloadTaskWithRetry({
     required ({String path, int version}) apiInfo,
+    required String destination,
+    required String? fallbackDestination,
     required String url,
     required bool allowReauth,
   }) async {
@@ -471,8 +343,9 @@ class SynologyNasClient implements NasClient {
           'api': 'SYNO.DownloadStation.Task',
           'version': apiInfo.version.toString(),
           'method': 'create',
+          'destination': destination,
           'uri': url,
-          'sid': activeSid,
+          '_sid': activeSid,
         },
       );
       final success = body['success'] == true;
@@ -480,22 +353,561 @@ class SynologyNasClient implements NasClient {
         throw _parseApiError(body, fallbackMessage: '下载任务创建失败');
       }
     } on SynologyApiException catch (error) {
-      final needsDedicatedSession =
-          _downloadStationSid == null && <int>{101, 102, 103, 104}.contains(error.code);
+      if (error.code == 403 &&
+          fallbackDestination != null &&
+          fallbackDestination != destination) {
+        debugPrint(
+          'NAS create task destination denied, retrying with $fallbackDestination',
+        );
+        _reportProgress('正在使用绝对路径重试下载任务');
+        return _createDownloadTaskWithRetry(
+          apiInfo: apiInfo,
+          destination: fallbackDestination,
+          fallbackDestination: null,
+          url: url,
+          allowReauth: allowReauth,
+        );
+      }
+
+      final needsDedicatedSession = _downloadStationSid == null &&
+          <int>{101, 102, 103, 104}.contains(error.code);
       if (allowReauth &&
           (_isSessionExpired(error) || needsDedicatedSession) &&
           _hasSavedCredentials) {
-        debugPrint('NAS Download Station session unavailable during create, re-authenticating');
+        debugPrint(
+            'NAS Download Station session unavailable during create, re-authenticating');
         _downloadStationSid = null;
         await _ensureDownloadStationSession(forceRelogin: true);
         return _createDownloadTaskWithRetry(
           apiInfo: apiInfo,
+          destination: destination,
+          fallbackDestination: fallbackDestination,
           url: url,
           allowReauth: false,
         );
       }
       rethrow;
     }
+  }
+
+  Future<void> _deleteDownloadTaskWithRetry({
+    required ({String path, int version}) apiInfo,
+    required String taskId,
+    required bool allowReauth,
+  }) async {
+    try {
+      final activeSid = _downloadStationSid ?? _sid;
+      if (activeSid == null || activeSid.isEmpty) {
+        throw const SynologyApiException('尚未登录下载管理模块');
+      }
+      final body = await _sendPostRequest(
+        uri: _buildWebApiUri(apiInfo.path),
+        formFields: {
+          'api': 'SYNO.DownloadStation.Task',
+          'version': apiInfo.version.toString(),
+          'method': 'delete',
+          'id': taskId,
+          'force_complete': 'false',
+          '_sid': activeSid,
+        },
+      );
+      final success = body['success'] == true;
+      if (!success) {
+        throw _parseApiError(body, fallbackMessage: '下载任务删除失败');
+      }
+    } on SynologyApiException catch (error) {
+      final needsDedicatedSession = _downloadStationSid == null &&
+          <int>{101, 102, 103, 104, 105}.contains(error.code);
+      if (allowReauth &&
+          (_isSessionExpired(error) || needsDedicatedSession) &&
+          _hasSavedCredentials) {
+        debugPrint(
+            'NAS Download Station session unavailable during delete, re-authenticating');
+        _downloadStationSid = null;
+        await _ensureDownloadStationSession(forceRelogin: true);
+        return _deleteDownloadTaskWithRetry(
+          apiInfo: apiInfo,
+          taskId: taskId,
+          allowReauth: false,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  ({String absolutePath, String downloadStationPath})
+      _normalizeDownloadDestination(
+    String destination,
+  ) {
+    final parts = destination
+        .trim()
+        .split('/')
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) {
+      throw const SynologyApiException('目的地文件夹地址不能为空');
+    }
+
+    final normalized = parts.join('/');
+    return (
+      absolutePath: '/$normalized',
+      downloadStationPath: normalized,
+    );
+  }
+
+  String _normalizeParentPath(String path) {
+    final trimmed = path.trim();
+    if (trimmed.isEmpty ||
+        trimmed == SynologyNasClient.sharedRootPath ||
+        trimmed == '@shared_root') {
+      throw const SynologyApiException('请先进入具体共享目录后再创建文件夹');
+    }
+    if (trimmed == '/') {
+      return '/';
+    }
+    final segments = trimmed
+        .split('/')
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+    if (segments.isEmpty) {
+      throw const SynologyApiException('父级目录无效');
+    }
+    return '/${segments.join('/')}';
+  }
+
+  Future<String> _ensureDownloadDestinationFolder(String absolutePath) async {
+    final parts = absolutePath
+        .trim()
+        .split('/')
+        .where((part) => part.trim().isNotEmpty)
+        .toList();
+    if (parts.isEmpty) {
+      throw const SynologyApiException('目的地文件夹地址不能为空');
+    }
+
+    if (_synoToken == null || _synoToken!.isEmpty) {
+      throw const SynologyApiException('尚未获取 Synology Token');
+    }
+
+    _reportProgress('正在确认目的地文件夹');
+    var currentPath = '';
+    for (final segment in parts) {
+      final nextPath = '$currentPath/$segment';
+      final exists = await _checkFolderExists(nextPath);
+      if (exists) {
+        currentPath = nextPath;
+        continue;
+      }
+
+      final parentPath = currentPath.isEmpty ? '/' : currentPath;
+      try {
+        await _createFolder(parentPath: parentPath, folderName: segment);
+      } on SynologyApiException catch (error) {
+        if (<int>{101, 119}.contains(error.code)) {
+          final eventuallyExists = await _waitAndCheckChildFolderExists(
+            parentPath: parentPath,
+            folderName: segment,
+          );
+          if (eventuallyExists) {
+            currentPath = nextPath;
+            continue;
+          }
+        }
+        throw SynologyApiException(
+          '无法创建目标目录：$nextPath，请检查 NAS 写入权限或路径合法性',
+          code: error.code,
+        );
+      }
+
+      final created = await _waitAndCheckFolderExists(nextPath);
+      if (!created) {
+        throw SynologyApiException('目标目录创建后仍不可访问：$nextPath');
+      }
+      currentPath = nextPath;
+    }
+    return currentPath.isEmpty ? absolutePath : currentPath;
+  }
+
+  Future<bool> _waitAndCheckFolderExists(
+    String absolutePath, {
+    int retries = 3,
+    Duration interval = const Duration(milliseconds: 250),
+  }) async {
+    for (var i = 0; i < retries; i++) {
+      final exists = await _checkFolderExists(absolutePath);
+      if (exists) {
+        return true;
+      }
+      if (i < retries - 1) {
+        await Future<void>.delayed(interval);
+      }
+    }
+    return false;
+  }
+
+  Future<bool> _waitAndCheckChildFolderExists({
+    required String parentPath,
+    required String folderName,
+    int retries = 3,
+    Duration interval = const Duration(milliseconds: 250),
+  }) async {
+    for (var i = 0; i < retries; i++) {
+      try {
+        final body = await _listRequest(folderPath: parentPath);
+        final data = body['data'];
+        if (data is Map<String, dynamic>) {
+          final files = data['files'];
+          if (files is List) {
+            final found = files.whereType<Map<String, dynamic>>().any((item) {
+              return item['isdir'] == true &&
+                  item['name']?.toString() == folderName;
+            });
+            if (found) {
+              return true;
+            }
+          }
+        }
+      } on SynologyApiException {
+        // Ignore and retry.
+      }
+      if (i < retries - 1) {
+        await Future<void>.delayed(interval);
+      }
+    }
+    return false;
+  }
+
+  bool _isFolderAlreadyExistsError(SynologyApiException error) {
+    return <int>{407, 409, 414, 418}.contains(error.code);
+  }
+
+  bool _shouldProbeExistingFolder(SynologyApiException error) {
+    // Keep this conservative: only "already exists"-like codes should be treated
+    // as soft-success. 119 is often session/validation related and should not be
+    // swallowed.
+    return false;
+  }
+
+  Future<bool> _checkFolderExists(String absolutePath) async {
+    _reportProgress('正在检查目的地文件夹是否已存在');
+    try {
+      final body = await _listRequest(folderPath: absolutePath);
+      return body['success'] == true;
+    } on SynologyApiException catch (error) {
+      // 408 is commonly returned when folder path does not exist.
+      if (error.code == 408) {
+        return false;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _createFolder({
+    required String parentPath,
+    required String folderName,
+  }) async {
+    final apiInfo = await _getCreateFolderApiInfo();
+    final uri = _buildWebApiUri(apiInfo.path);
+    final preferJson = apiInfo.requestFormat?.toUpperCase() == 'JSON';
+    SynologyApiException? lastError;
+    await _ensureFileStationSession();
+    final sid = _fileStationSid ?? _sid;
+
+    Future<bool> tryBody(Map<String, dynamic> body) async {
+      if (body['success'] == true) {
+        return true;
+      }
+      final error = _parseApiError(body, fallbackMessage: '目的地文件夹创建失败');
+      if (_isFolderAlreadyExistsError(error) ||
+          _shouldProbeExistingFolder(error)) {
+        return true;
+      }
+      lastError = error;
+      return false;
+    }
+
+    Future<bool> tryJsonAttempts(int version) async {
+      final attempts = <Map<String, dynamic>>[
+        {
+          'api': 'SYNO.FileStation.CreateFolder',
+          'version': version,
+          'method': 'create',
+          'folder_path': parentPath,
+          'name': folderName,
+          'force_parent': false,
+          if (_synoToken != null && _synoToken!.isNotEmpty)
+            'SynoToken': _synoToken!,
+        },
+        {
+          'api': 'SYNO.FileStation.CreateFolder',
+          'version': version,
+          'method': 'create',
+          'folder_path': parentPath,
+          'name': folderName,
+          'force_parent': false,
+          if (sid != null && sid.isNotEmpty) '_sid': sid,
+          if (_synoToken != null && _synoToken!.isNotEmpty)
+            'SynoToken': _synoToken!,
+        },
+        {
+          'api': 'SYNO.FileStation.CreateFolder',
+          'version': version,
+          'method': 'create',
+          'folder_path': parentPath,
+          'name': folderName,
+          'force_parent': 'false',
+          'SynoToken': _synoToken!,
+        },
+        {
+          'api': 'SYNO.FileStation.CreateFolder',
+          'version': version.toString(),
+          'method': 'create',
+          'folder_path': parentPath,
+          'name': [folderName],
+          'force_parent': 'true',
+          if (sid != null && sid.isNotEmpty) '_sid': sid,
+        },
+        {
+          'api': 'SYNO.FileStation.CreateFolder',
+          'version': version,
+          'method': 'create',
+          'folder_path': [parentPath],
+          'name': [folderName],
+          'force_parent': 'false',
+          if (sid != null && sid.isNotEmpty) '_sid': sid,
+          if (_synoToken != null && _synoToken!.isNotEmpty)
+            'SynoToken': _synoToken!,
+        },
+        {
+          'api': 'SYNO.FileStation.CreateFolder',
+          'version': version,
+          'method': 'create',
+          'folder_path': [parentPath],
+          'name': [folderName],
+          'force_parent': 'true',
+          'SynoToken': _synoToken!,
+        },
+        {
+          'api': 'SYNO.FileStation.CreateFolder',
+          'version': version.toString(),
+          'method': 'create',
+          'folder_path': [parentPath],
+          'name': folderName,
+          'force_parent': 'true',
+          if (sid != null && sid.isNotEmpty) '_sid': sid,
+          if (_synoToken != null && _synoToken!.isNotEmpty)
+            'SynoToken': _synoToken!,
+        },
+      ];
+
+      for (final attempt in attempts) {
+        final jsonBody = await _sendPostJsonRequest(
+          uri: uri,
+          jsonBody: attempt,
+        );
+        if (await tryBody(jsonBody)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    List<Map<String, String>> buildFormAttempts(int version) {
+      return <Map<String, String>>[
+        {
+          'folder_path': parentPath,
+          'name': folderName,
+          'version': version.toString(),
+          'force_parent': 'false',
+          if (_synoToken != null && _synoToken!.isNotEmpty)
+            'SynoToken': _synoToken!,
+        },
+        {
+          'folder_path': parentPath,
+          'name': folderName,
+          'version': version.toString(),
+          'force_parent': 'false',
+          if (sid != null && sid.isNotEmpty) '_sid': sid,
+          if (_synoToken != null && _synoToken!.isNotEmpty)
+            'SynoToken': _synoToken!,
+        },
+        {
+          'folder_path': parentPath,
+          'name': folderName,
+          'version': version.toString(),
+          'force_parent': 'true',
+          if (sid != null && sid.isNotEmpty) '_sid': sid,
+          if (_synoToken != null && _synoToken!.isNotEmpty)
+            'SynoToken': _synoToken!,
+        },
+        // Synology workaround: quoted raw values for some DSM versions/relay paths.
+        {
+          'folder_path': '"$parentPath"',
+          'name': '"$folderName"',
+          'version': version.toString(),
+          'force_parent': 'false',
+          if (sid != null && sid.isNotEmpty) '_sid': sid,
+          if (_synoToken != null && _synoToken!.isNotEmpty)
+            'SynoToken': _synoToken!,
+        },
+        {
+          'folder_path': jsonEncode([parentPath]),
+          'name': jsonEncode([folderName]),
+          'version': version.toString(),
+          'force_parent': 'false',
+          if (sid != null && sid.isNotEmpty) '_sid': sid,
+          if (_synoToken != null && _synoToken!.isNotEmpty)
+            'SynoToken': _synoToken!,
+        },
+        {
+          'folder_path': jsonEncode([parentPath]),
+          'name': jsonEncode([folderName]),
+          'version': version.toString(),
+          'force_parent': 'true',
+          if (sid != null && sid.isNotEmpty) '_sid': sid,
+          if (_synoToken != null && _synoToken!.isNotEmpty)
+            'SynoToken': _synoToken!,
+        },
+      ];
+    }
+
+    Future<bool> tryFormAttempts(int version) async {
+      for (final attempt in buildFormAttempts(version)) {
+        final formBody = await _sendPostRequest(
+          uri: uri,
+          formFields: {
+            'api': 'SYNO.FileStation.CreateFolder',
+            'version': attempt['version']!,
+            'method': 'create',
+            'folder_path': attempt['folder_path']!,
+            'name': attempt['name']!,
+            'force_parent': attempt['force_parent']!,
+            if (attempt.containsKey('_sid')) '_sid': attempt['_sid']!,
+            if (attempt.containsKey('SynoToken'))
+              'SynoToken': attempt['SynoToken']!,
+          },
+        );
+        if (await tryBody(formBody)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    final versionsToTry = <int>{apiInfo.version, 1};
+    for (final version in versionsToTry) {
+      if (preferJson) {
+        if (await tryJsonAttempts(version)) return;
+        if (await tryFormAttempts(version)) return;
+      } else {
+        if (await tryFormAttempts(version)) return;
+        if (await tryJsonAttempts(version)) return;
+      }
+    }
+
+    if (lastError?.code == 119) {
+      // Session invalid: refresh a dedicated FileStation sid then retry once.
+      await _ensureFileStationSession(forceRelogin: true);
+      final refreshedSid = _fileStationSid ?? _sid;
+      for (final version in versionsToTry) {
+        final retryFormBody = await _sendPostRequest(
+          uri: uri,
+          formFields: {
+            'api': 'SYNO.FileStation.CreateFolder',
+            'version': version.toString(),
+            'method': 'create',
+            'folder_path': parentPath,
+            'name': folderName,
+            'force_parent': 'false',
+            if (refreshedSid != null && refreshedSid.isNotEmpty)
+              '_sid': refreshedSid,
+            if (_synoToken != null && _synoToken!.isNotEmpty)
+              'SynoToken': _synoToken!,
+          },
+        );
+        if (await tryBody(retryFormBody)) {
+          return;
+        }
+      }
+    }
+
+    throw lastError ?? const SynologyApiException('目的地文件夹创建失败');
+  }
+
+  Future<({String path, int version, String? requestFormat})>
+      _getCreateFolderApiInfo() async {
+    if (_createFolderApiPath != null && _createFolderApiVersion != null) {
+      return (
+        path: _createFolderApiPath!,
+        version: _createFolderApiVersion!,
+        requestFormat: null,
+      );
+    }
+
+    final body = await _sendRequest(
+      uri: _buildWebApiUri('query.cgi'),
+      queryParameters: {
+        'api': 'SYNO.API.Info',
+        'version': '1',
+        'method': 'query',
+        'query': 'SYNO.FileStation.CreateFolder',
+      },
+    );
+    final success = body['success'] == true;
+    if (!success) {
+      // Fallback to conservative default used previously.
+      _createFolderApiPath = 'entry.cgi';
+      _createFolderApiVersion = 2;
+      return (
+        path: _createFolderApiPath!,
+        version: _createFolderApiVersion!,
+        requestFormat: null,
+      );
+    }
+
+    final data = body['data'];
+    if (data is! Map<String, dynamic>) {
+      _createFolderApiPath = 'entry.cgi';
+      _createFolderApiVersion = 2;
+      return (
+        path: _createFolderApiPath!,
+        version: _createFolderApiVersion!,
+        requestFormat: null,
+      );
+    }
+    final apiInfo = data['SYNO.FileStation.CreateFolder'];
+    if (apiInfo is! Map<String, dynamic>) {
+      _createFolderApiPath = 'entry.cgi';
+      _createFolderApiVersion = 2;
+      return (
+        path: _createFolderApiPath!,
+        version: _createFolderApiVersion!,
+        requestFormat: null,
+      );
+    }
+
+    final path = apiInfo['path']?.toString();
+    final maxVersion = apiInfo['maxVersion'];
+    final requestFormat = apiInfo['requestFormat']?.toString();
+    if (path == null || path.isEmpty || maxVersion is! num) {
+      _createFolderApiPath = 'entry.cgi';
+      _createFolderApiVersion = 2;
+      return (
+        path: _createFolderApiPath!,
+        version: _createFolderApiVersion!,
+        requestFormat: requestFormat,
+      );
+    }
+
+    _createFolderApiPath = path;
+    _createFolderApiVersion = maxVersion.toInt();
+    return (
+      path: _createFolderApiPath!,
+      version: _createFolderApiVersion!,
+      requestFormat: requestFormat,
+    );
   }
 
   Future<Map<String, dynamic>> _listRequest({required String? folderPath}) {
@@ -507,7 +919,8 @@ class SynologyNasClient implements NasClient {
       'sort_direction': 'DESC',
       'action': 'list',
       'check_dir': 'true',
-      'additional': '["real_path","size","time","type","description","indexed"]',
+      'additional':
+          '["real_path","size","time","type","description","indexed"]',
       'filetype': 'all',
       'method': 'list',
       'version': '2',
@@ -598,7 +1011,8 @@ class SynologyNasClient implements NasClient {
         .toList();
   }
 
-  List<NasFileEntry> _extractSharedFolderEntries(Map<String, dynamic> listBody) {
+  List<NasFileEntry> _extractSharedFolderEntries(
+      Map<String, dynamic> listBody) {
     final data = listBody['data'];
     if (data is! Map<String, dynamic>) {
       return const [];
@@ -615,8 +1029,8 @@ class SynologyNasClient implements NasClient {
         name: (json['name'] ?? '').toString(),
         path: path,
         isDirectory: true,
-        sizeLabel: NasFileEntry._formatSizeLabel(json['additional']),
-        modifiedAtLabel: NasFileEntry._formatModifiedLabel(
+        sizeLabel: NasFileEntry.formatSizeLabel(json['additional']),
+        modifiedAtLabel: NasFileEntry.formatModifiedLabel(
           json['additional'] is Map<String, dynamic>
               ? (json['additional'] as Map<String, dynamic>)['time']
               : null,
@@ -662,7 +1076,10 @@ class SynologyNasClient implements NasClient {
   }
 
   bool get _hasSession =>
-      _sid != null && _sid!.isNotEmpty && _synoToken != null && _synoToken!.isNotEmpty;
+      _sid != null &&
+      _sid!.isNotEmpty &&
+      _synoToken != null &&
+      _synoToken!.isNotEmpty;
 
   bool get _hasSavedCredentials =>
       _lastUsername != null &&
@@ -675,23 +1092,47 @@ class SynologyNasClient implements NasClient {
     required String password,
     required bool forceResolveBaseUri,
   }) async {
-    if (forceResolveBaseUri || _resolvedBaseUri == null) {
+    final networkChanged = await _hasNetworkFingerprintChanged();
+    if (forceResolveBaseUri || _resolvedBaseUri == null || networkChanged) {
+      if (networkChanged) {
+        _reportProgress('检测到网络环境变化，正在重新探测群晖地址');
+      }
       _reportProgress('正在解析 QuickConnect 地址');
       _resolvedBaseUri = await _resolveDsmBaseUri();
     }
 
     _reportProgress('正在请求登录凭证');
-    final loginBody = await _sendRequest(
-      uri: _buildWebApiUri('auth.cgi'),
-      queryParameters: {
-        'api': 'SYNO.API.Auth',
-        'version': '6',
-        'method': 'login',
-        'account': username,
-        'passwd': password,
-        'enable_syno_token': 'yes',
-      },
-    );
+    Map<String, dynamic> loginBody;
+    try {
+      loginBody = await _sendRequest(
+        uri: _buildWebApiUri('auth.cgi'),
+        queryParameters: {
+          'api': 'SYNO.API.Auth',
+          'version': '6',
+          'method': 'login',
+          'account': username,
+          'passwd': password,
+          'enable_syno_token': 'yes',
+        },
+      );
+    } catch (error) {
+      if (!_isRecoverableProbeError(error) || forceResolveBaseUri) {
+        rethrow;
+      }
+      _reportProgress('已缓存地址不可用，正在重新探测群晖地址');
+      _resolvedBaseUri = await _resolveDsmBaseUri();
+      loginBody = await _sendRequest(
+        uri: _buildWebApiUri('auth.cgi'),
+        queryParameters: {
+          'api': 'SYNO.API.Auth',
+          'version': '6',
+          'method': 'login',
+          'account': username,
+          'passwd': password,
+          'enable_syno_token': 'yes',
+        },
+      );
+    }
 
     final success = loginBody['success'] == true;
     if (!success) {
@@ -713,17 +1154,25 @@ class SynologyNasClient implements NasClient {
     await _persistSession();
   }
 
+  bool _isRecoverableProbeError(Object error) {
+    return error is SocketException ||
+        error is TimeoutException ||
+        error is HandshakeException;
+  }
+
   Future<void> _clearSession({required bool keepCredentials}) async {
     _sid = null;
     _synoToken = null;
     _did = null;
     _downloadStationSid = null;
+    _fileStationSid = null;
     _downloadTaskApiPath = null;
     _downloadTaskApiVersion = null;
     if (!keepCredentials) {
       _lastUsername = null;
       _lastPassword = null;
       _resolvedBaseUri = null;
+      _lastNetworkFingerprint = null;
     }
     _cookies.clear();
     _cookies['type'] = Cookie('type', 'tunnel');
@@ -737,8 +1186,11 @@ class SynologyNasClient implements NasClient {
     };
   }
 
-  Future<void> _ensureDownloadStationSession({bool forceRelogin = false}) async {
-    if (!forceRelogin && _downloadStationSid != null && _downloadStationSid!.isNotEmpty) {
+  Future<void> _ensureDownloadStationSession(
+      {bool forceRelogin = false}) async {
+    if (!forceRelogin &&
+        _downloadStationSid != null &&
+        _downloadStationSid!.isNotEmpty) {
       return;
     }
     if (!forceRelogin && _sid != null && _sid!.isNotEmpty) {
@@ -776,6 +1228,42 @@ class SynologyNasClient implements NasClient {
       throw const SynologyApiException('下载管理会话缺失');
     }
     _reportProgress('下载管理模块已连接');
+  }
+
+  Future<void> _ensureFileStationSession({bool forceRelogin = false}) async {
+    if (!forceRelogin &&
+        _fileStationSid != null &&
+        _fileStationSid!.isNotEmpty) {
+      return;
+    }
+    if (!_hasSavedCredentials) {
+      throw const SynologyApiException('缺少 FileStation 登录凭证');
+    }
+    _resolvedBaseUri ??= await _resolveDsmBaseUri();
+    final body = await _sendRequest(
+      uri: _buildWebApiUri('entry.cgi'),
+      queryParameters: {
+        'api': 'SYNO.API.Auth',
+        'version': '6',
+        'method': 'login',
+        'account': _lastUsername!,
+        'passwd': _lastPassword!,
+        'session': 'FileStation',
+        'format': 'sid',
+      },
+    );
+    final success = body['success'] == true;
+    if (!success) {
+      throw _parseApiError(body, fallbackMessage: 'FileStation 登录失败');
+    }
+    final data = body['data'];
+    if (data is! Map<String, dynamic>) {
+      throw const SynologyApiException('FileStation 登录响应格式不正确');
+    }
+    _fileStationSid = data['sid']?.toString();
+    if (_fileStationSid == null || _fileStationSid!.isEmpty) {
+      throw const SynologyApiException('FileStation 会话缺失');
+    }
   }
 
   Future<({String path, int version})> _getDownloadTaskApiInfo() async {
@@ -826,17 +1314,20 @@ class SynologyNasClient implements NasClient {
       return;
     }
 
+    await prefs.remove('nas.last_password');
     _lastUsername ??= prefs.getString(_prefsKeyLastUsername);
-    _lastPassword ??= prefs.getString(_prefsKeyLastPassword);
 
     final baseUriText = prefs.getString(_prefsKeyResolvedBaseUri);
-    if (_resolvedBaseUri == null && baseUriText != null && baseUriText.isNotEmpty) {
+    if (_resolvedBaseUri == null &&
+        baseUriText != null &&
+        baseUriText.isNotEmpty) {
       _resolvedBaseUri = Uri.tryParse(baseUriText);
     }
 
     _sid ??= prefs.getString(_prefsKeySid);
     _synoToken ??= prefs.getString(_prefsKeySynoToken);
     _did ??= prefs.getString(_prefsKeyDid);
+    _lastNetworkFingerprint ??= prefs.getString(_prefsKeyNetworkFingerprint);
 
     final encodedCookies = prefs.getString(_prefsKeyCookies);
     if (encodedCookies != null &&
@@ -862,7 +1353,8 @@ class SynologyNasClient implements NasClient {
       return;
     }
     if (_resolvedBaseUri != null) {
-      await prefs.setString(_prefsKeyResolvedBaseUri, _resolvedBaseUri.toString());
+      await prefs.setString(
+          _prefsKeyResolvedBaseUri, _resolvedBaseUri.toString());
     }
     if (_sid != null) {
       await prefs.setString(_prefsKeySid, _sid!);
@@ -876,14 +1368,15 @@ class SynologyNasClient implements NasClient {
     if (_lastUsername != null) {
       await prefs.setString(_prefsKeyLastUsername, _lastUsername!);
     }
-    if (_lastPassword != null) {
-      await prefs.setString(_prefsKeyLastPassword, _lastPassword!);
+    _lastNetworkFingerprint ??= await _computeNetworkFingerprint();
+    if (_lastNetworkFingerprint != null) {
+      await prefs.setString(
+          _prefsKeyNetworkFingerprint, _lastNetworkFingerprint!);
     }
 
-    final cookies =
-        _cookies.values
-            .map((cookie) => {'name': cookie.name, 'value': cookie.value})
-            .toList();
+    final cookies = _cookies.values
+        .map((cookie) => {'name': cookie.name, 'value': cookie.value})
+        .toList();
     await prefs.setString(_prefsKeyCookies, jsonEncode(cookies));
   }
 
@@ -896,10 +1389,49 @@ class SynologyNasClient implements NasClient {
     await prefs.remove(_prefsKeySynoToken);
     await prefs.remove(_prefsKeyDid);
     await prefs.remove(_prefsKeyCookies);
+    await prefs.remove(_prefsKeyNetworkFingerprint);
     if (!keepCredentials) {
       await prefs.remove(_prefsKeyResolvedBaseUri);
       await prefs.remove(_prefsKeyLastUsername);
-      await prefs.remove(_prefsKeyLastPassword);
+    }
+  }
+
+  Future<bool> _hasNetworkFingerprintChanged() async {
+    final current = await _computeNetworkFingerprint();
+    if (current == null || current.isEmpty) {
+      return false;
+    }
+    final previous = _lastNetworkFingerprint;
+    _lastNetworkFingerprint = current;
+    if (previous == null || previous.isEmpty) {
+      return false;
+    }
+    return previous != current;
+  }
+
+  Future<String?> _computeNetworkFingerprint() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.any,
+      );
+      final tokens = <String>[];
+      for (final interface in interfaces) {
+        for (final address in interface.addresses) {
+          final value = address.address.trim();
+          if (value.isEmpty) {
+            continue;
+          }
+          tokens.add('${interface.name}:$value');
+        }
+      }
+      if (tokens.isEmpty) {
+        return null;
+      }
+      tokens.sort();
+      return tokens.join('|');
+    } catch (_) {
+      return null;
     }
   }
 
@@ -926,13 +1458,13 @@ class SynologyNasClient implements NasClient {
     required Map<String, String> queryParameters,
   }) async {
     final requestUri = uri.replace(queryParameters: queryParameters);
-    debugPrint('NAS request -> GET $requestUri');
+    debugPrint('NAS request -> GET ${_redactUri(requestUri)}');
     final request = await _httpClient.getUrl(requestUri);
 
     final cookieHeader = _cookieHeader;
     if (cookieHeader.isNotEmpty) {
       request.headers.set(HttpHeaders.cookieHeader, cookieHeader);
-      debugPrint('NAS request cookies -> $cookieHeader');
+      debugPrint('NAS request cookies -> ${_redactCookieHeader(cookieHeader)}');
     }
 
     final response = await request.close();
@@ -941,8 +1473,9 @@ class SynologyNasClient implements NasClient {
     }
 
     final responseBody = await utf8.decodeStream(response);
-    debugPrint('NAS response <- ${response.statusCode} $requestUri');
-    debugPrint('NAS response body <- $responseBody');
+    debugPrint(
+        'NAS response <- ${response.statusCode} ${_redactUri(requestUri)}');
+    debugPrint('NAS response body <- ${_redactResponseBody(responseBody)}');
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw HttpException(
         '请求失败: ${response.statusCode}',
@@ -963,7 +1496,9 @@ class SynologyNasClient implements NasClient {
     required Map<String, String> formFields,
   }) async {
     debugPrint('NAS request -> POST $uri');
-    debugPrint('NAS request body -> ${Uri(queryParameters: formFields).query}');
+    debugPrint(
+      'NAS request body -> ${_redactQueryParameters(formFields)}',
+    );
     final request = await _httpClient.postUrl(uri);
     request.headers.set(
       HttpHeaders.contentTypeHeader,
@@ -973,7 +1508,7 @@ class SynologyNasClient implements NasClient {
     final cookieHeader = _cookieHeader;
     if (cookieHeader.isNotEmpty) {
       request.headers.set(HttpHeaders.cookieHeader, cookieHeader);
-      debugPrint('NAS request cookies -> $cookieHeader');
+      debugPrint('NAS request cookies -> ${_redactCookieHeader(cookieHeader)}');
     }
 
     request.write(Uri(queryParameters: formFields).query);
@@ -984,7 +1519,50 @@ class SynologyNasClient implements NasClient {
 
     final responseBody = await utf8.decodeStream(response);
     debugPrint('NAS response <- ${response.statusCode} $uri');
-    debugPrint('NAS response body <- $responseBody');
+    debugPrint('NAS response body <- ${_redactResponseBody(responseBody)}');
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw HttpException(
+        '请求失败: ${response.statusCode}',
+        uri: uri,
+      );
+    }
+
+    final decoded = jsonDecode(responseBody);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('响应格式不正确');
+    }
+    return decoded;
+  }
+
+  Future<Map<String, dynamic>> _sendPostJsonRequest({
+    required Uri uri,
+    required Map<String, dynamic> jsonBody,
+  }) async {
+    debugPrint('NAS request -> POST $uri');
+    debugPrint(
+      'NAS request body (json) -> ${_redactResponseBody(jsonEncode(jsonBody))}',
+    );
+    final request = await _httpClient.postUrl(uri);
+    request.headers.set(
+      HttpHeaders.contentTypeHeader,
+      'application/json; charset=utf-8',
+    );
+
+    final cookieHeader = _cookieHeader;
+    if (cookieHeader.isNotEmpty) {
+      request.headers.set(HttpHeaders.cookieHeader, cookieHeader);
+      debugPrint('NAS request cookies -> ${_redactCookieHeader(cookieHeader)}');
+    }
+
+    request.write(jsonEncode(jsonBody));
+    final response = await request.close();
+    for (final cookie in response.cookies) {
+      _cookies[cookie.name] = cookie;
+    }
+
+    final responseBody = await utf8.decodeStream(response);
+    debugPrint('NAS response <- ${response.statusCode} $uri');
+    debugPrint('NAS response body <- ${_redactResponseBody(responseBody)}');
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw HttpException(
         '请求失败: ${response.statusCode}',
@@ -1034,10 +1612,11 @@ class SynologyNasClient implements NasClient {
       payload: payload,
     );
 
-    final successCandidate = serverInfos.cast<Map<String, dynamic>?>().firstWhere(
-          (item) => item?['errno'] == 0,
-          orElse: () => null,
-        );
+    final successCandidate =
+        serverInfos.cast<Map<String, dynamic>?>().firstWhere(
+              (item) => item?['errno'] == 0,
+              orElse: () => null,
+            );
 
     if (successCandidate == null) {
       final firstError = serverInfos.isNotEmpty ? serverInfos.first : null;
@@ -1059,21 +1638,47 @@ class SynologyNasClient implements NasClient {
       smartdns: successCandidate['smartdns'],
     );
 
-    for (var index = 0; index < uriCandidates.length; index++) {
-      final candidate = uriCandidates[index];
+    if (uriCandidates.isEmpty) {
+      throw const SynologyApiException('QuickConnect 已解析，但未返回可探测地址');
+    }
+
+    _reportProgress('正在并行探测群晖地址（${uriCandidates.length}个候选）');
+    final best = await _probeBestCandidateUri(uriCandidates);
+    if (best != null) {
       _reportProgress(
-        '正在探测群晖地址 ${index + 1}/${uriCandidates.length}：${_formatProbeTarget(candidate)}',
+        '已找到可用地址：${_formatProbeTarget(best.uri)}（${best.latency.inMilliseconds}ms）',
       );
-      if (await _canReachAuthApi(candidate)) {
-        _reportProgress(
-          '已找到可用地址：${_formatProbeTarget(candidate)}',
-        );
-        debugPrint('NAS quickconnect resolved DSM -> $candidate');
-        return candidate;
-      }
+      debugPrint(
+          'NAS quickconnect resolved DSM -> ${best.uri} (${best.latency.inMilliseconds}ms)');
+      return best.uri;
     }
 
     throw const SynologyApiException('QuickConnect 已解析，但未找到可访问的 DSM 地址');
+  }
+
+  Future<({Uri uri, Duration latency})?> _probeBestCandidateUri(
+    List<Uri> uriCandidates,
+  ) async {
+    final futures = uriCandidates.map((candidate) async {
+      final stopwatch = Stopwatch()..start();
+      final reachable = await _canReachAuthApi(candidate);
+      stopwatch.stop();
+      if (!reachable) {
+        return null;
+      }
+      return (uri: candidate, latency: stopwatch.elapsed);
+    }).toList();
+
+    final results = await Future.wait(futures);
+    final successful = results
+        .whereType<({Uri uri, Duration latency})>()
+        .toList(growable: false);
+    if (successful.isEmpty) {
+      return null;
+    }
+    final sorted = successful.toList()
+      ..sort((a, b) => a.latency.compareTo(b.latency));
+    return sorted.first;
   }
 
   Future<List<Map<String, dynamic>>> _requestQuickConnectServers({
@@ -1104,10 +1709,11 @@ class SynologyNasClient implements NasClient {
     }
 
     final candidates = decoded.whereType<Map<String, dynamic>>().toList();
-    final successCandidate = candidates.cast<Map<String, dynamic>?>().firstWhere(
-          (item) => item?['errno'] == 0,
-          orElse: () => null,
-        );
+    final successCandidate =
+        candidates.cast<Map<String, dynamic>?>().firstWhere(
+              (item) => item?['errno'] == 0,
+              orElse: () => null,
+            );
     if (successCandidate != null) {
       return candidates;
     }
@@ -1268,12 +1874,12 @@ class SynologyNasClient implements NasClient {
     try {
       debugPrint('NAS probe -> GET $uri');
       final request = await _httpClient.getUrl(uri).timeout(
-        const Duration(seconds: 5),
-      );
+            const Duration(seconds: 4),
+          );
       final response = await request.close();
       final responseBody = await utf8.decodeStream(response).timeout(
-        const Duration(seconds: 5),
-      );
+            const Duration(seconds: 4),
+          );
       debugPrint('NAS probe response <- ${response.statusCode} $uri');
       debugPrint('NAS probe body <- $responseBody');
 
@@ -1306,15 +1912,72 @@ class SynologyNasClient implements NasClient {
       .map((cookie) => '${cookie.name}=${cookie.value}')
       .join('; ');
 
+  Uri _redactUri(Uri uri) {
+    if (uri.queryParameters.isEmpty) {
+      return uri;
+    }
+    return uri.replace(
+      queryParameters: _redactQueryMap(uri.queryParameters),
+    );
+  }
+
+  String _redactQueryParameters(Map<String, String> queryParameters) {
+    return Uri(queryParameters: _redactQueryMap(queryParameters)).query;
+  }
+
+  Map<String, String> _redactQueryMap(Map<String, String> queryParameters) {
+    const sensitiveKeys = {
+      'passwd',
+      'sid',
+      '_sid',
+      'SynoToken',
+      'synotoken',
+      'token',
+    };
+    return queryParameters.map((key, value) {
+      if (sensitiveKeys.contains(key)) {
+        return MapEntry(key, '***');
+      }
+      return MapEntry(key, value);
+    });
+  }
+
+  String _redactCookieHeader(String cookieHeader) {
+    const sensitiveCookieNames = {'id', 'did'};
+    return cookieHeader.split(';').map((part) {
+      final trimmed = part.trim();
+      final separator = trimmed.indexOf('=');
+      if (separator <= 0) {
+        return trimmed;
+      }
+      final name = trimmed.substring(0, separator);
+      if (sensitiveCookieNames.contains(name)) {
+        return '$name=***';
+      }
+      return trimmed;
+    }).join('; ');
+  }
+
+  String _redactResponseBody(String responseBody) {
+    return responseBody
+        .replaceAllMapped(
+          RegExp(r'"(sid|synotoken|did)"\s*:\s*"[^"]*"'),
+          (match) => '"${match.group(1)}":"***"',
+        )
+        .replaceAllMapped(
+          RegExp(r'"(id)"\s*:\s*"[^"]{16,}"'),
+          (match) => '"${match.group(1)}":"***"',
+        );
+  }
+
   SynologyApiException _parseApiError(
     Map<String, dynamic> body, {
     required String fallbackMessage,
   }) {
     final error = body['error'];
-    final code =
-        error is Map<String, dynamic> && error['code'] is num
-            ? (error['code'] as num).toInt()
-            : null;
+    final code = error is Map<String, dynamic> && error['code'] is num
+        ? (error['code'] as num).toInt()
+        : null;
     return SynologyApiException(fallbackMessage, code: code);
   }
 }
@@ -1323,9 +1986,13 @@ class NasPage extends StatefulWidget {
   NasPage({
     super.key,
     NasClient? client,
+    this.openDownloadManagerOnReady = false,
+    this.initialDownloadDestination,
   }) : client = client ?? _sharedClient;
 
   final NasClient client;
+  final bool openDownloadManagerOnReady;
+  final String? initialDownloadDestination;
 
   static final SynologyNasClient _sharedClient = SynologyNasClient();
 
@@ -1350,10 +2017,15 @@ class _NasPageState extends State<NasPage> {
   String? _progressMessage;
   List<NasFileEntry> _entries = const [];
   List<NasDownloadTask> _downloadTasks = const [];
+  NasDownloadTaskFilter _downloadFilter = NasDownloadTaskFilter.all;
+  late bool _pendingInitialDownloadDialog;
 
   @override
   void initState() {
     super.initState();
+    _pendingInitialDownloadDialog = widget.openDownloadManagerOnReady &&
+        widget.initialDownloadDestination != null &&
+        widget.initialDownloadDestination!.trim().isNotEmpty;
     widget.client.setProgressListener((message) {
       if (!mounted) {
         return;
@@ -1390,9 +2062,16 @@ class _NasPageState extends State<NasPage> {
         _entries = entries;
         _loggedIn = true;
         _showFileManager = false;
-        _showDownloadManager = false;
+        _showDownloadManager = widget.openDownloadManagerOnReady;
         _progressMessage = null;
       });
+      if (widget.openDownloadManagerOnReady) {
+        unawaited(
+          _openDownloadManager(
+            showCreateDialog: _pendingInitialDownloadDialog,
+          ),
+        );
+      }
     } catch (_) {
       // Ignore restore errors and keep login page visible.
     } finally {
@@ -1436,9 +2115,16 @@ class _NasPageState extends State<NasPage> {
         _entries = entries;
         _loggedIn = true;
         _showFileManager = false;
-        _showDownloadManager = false;
+        _showDownloadManager = widget.openDownloadManagerOnReady;
         _progressMessage = null;
       });
+      if (widget.openDownloadManagerOnReady) {
+        unawaited(
+          _openDownloadManager(
+            showCreateDialog: _pendingInitialDownloadDialog,
+          ),
+        );
+      }
     } catch (error) {
       if (!mounted) {
         return;
@@ -1497,12 +2183,33 @@ class _NasPageState extends State<NasPage> {
     await _loadDirectory(path: entry.path);
   }
 
-  Future<void> _openDownloadManager() async {
+  Future<void> _openDownloadManager({bool showCreateDialog = false}) async {
     setState(() {
       _showDownloadManager = true;
       _showFileManager = false;
     });
     await _loadDownloadTasks();
+    if (!mounted || !showCreateDialog || !_pendingInitialDownloadDialog) {
+      return;
+    }
+    _pendingInitialDownloadDialog = false;
+    await _waitNextFrame();
+    if (!mounted || !_showDownloadManager) {
+      return;
+    }
+    await _showCreateDownloadDialog(
+      initialDestination: widget.initialDownloadDestination,
+    );
+  }
+
+  Future<void> _waitNextFrame() {
+    final completer = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
+    });
+    return completer.future;
   }
 
   Future<void> _loadDownloadTasks() async {
@@ -1535,11 +2242,14 @@ class _NasPageState extends State<NasPage> {
     }
   }
 
-  Future<void> _showCreateDownloadDialog() async {
-    final controller = TextEditingController();
+  Future<void> _showCreateDownloadDialog({String? initialDestination}) async {
+    final destinationController = TextEditingController(
+      text: initialDestination ?? '',
+    );
+    final urlController = TextEditingController();
     String? dialogError;
 
-    final url = await showDialog<String>(
+    final task = await showDialog<({String destination, String url})>(
       context: context,
       builder: (context) {
         return StatefulBuilder(
@@ -1553,8 +2263,16 @@ class _NasPageState extends State<NasPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     TextField(
-                      controller: controller,
+                      controller: destinationController,
                       autofocus: true,
+                      decoration: const InputDecoration(
+                        labelText: '目的地文件夹',
+                        hintText: '例如 /video、/剧集、/downloads',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: urlController,
                       decoration: const InputDecoration(
                         labelText: '下载 URL',
                         hintText: '请输入 http(s)、magnet 等下载链接',
@@ -1581,14 +2299,24 @@ class _NasPageState extends State<NasPage> {
                 ),
                 FilledButton(
                   onPressed: () {
-                    final value = controller.text.trim();
-                    if (value.isEmpty) {
+                    final destination = destinationController.text.trim();
+                    final url = urlController.text.trim();
+                    if (destination.isEmpty) {
+                      setDialogState(() {
+                        dialogError = '请输入目的地文件夹地址';
+                      });
+                      return;
+                    }
+                    if (url.isEmpty) {
                       setDialogState(() {
                         dialogError = '请输入下载链接';
                       });
                       return;
                     }
-                    Navigator.pop(context, value);
+                    Navigator.pop(
+                      context,
+                      (destination: destination, url: url),
+                    );
                   },
                   child: const Text('创建'),
                 ),
@@ -1599,9 +2327,10 @@ class _NasPageState extends State<NasPage> {
       },
     );
 
-    controller.dispose();
+    destinationController.dispose();
+    urlController.dispose();
 
-    if (url == null || url.isEmpty) {
+    if (task == null || task.url.isEmpty || task.destination.isEmpty) {
       return;
     }
 
@@ -1611,7 +2340,180 @@ class _NasPageState extends State<NasPage> {
     });
 
     try {
-      await widget.client.createDownloadTask(url: url);
+      await widget.client.createDownloadTask(
+        destination: task.destination,
+        url: task.url,
+      );
+      if (!mounted) {
+        return;
+      }
+      await _loadDownloadTasks();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorMessage = error.toString();
+        _downloadLoading = false;
+      });
+    }
+  }
+
+  Future<void> _showCreateFolderDialog() async {
+    if (_submitting) {
+      return;
+    }
+    if (_currentPath == SynologyNasClient.sharedRootPath) {
+      setState(() {
+        _errorMessage = '请先进入具体共享目录后再创建文件夹';
+      });
+      return;
+    }
+
+    final nameController = TextEditingController();
+    String? dialogError;
+
+    final folderName = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('新建文件夹'),
+              content: SizedBox(
+                width: 380,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '当前目录：$_pathLabel',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF6B7280),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: nameController,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        labelText: '文件夹名称',
+                        hintText: '请输入名称',
+                      ),
+                    ),
+                    if (dialogError != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        dialogError!,
+                        style: const TextStyle(
+                          color: Color(0xFFDC2626),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final name = nameController.text.trim();
+                    if (name.isEmpty) {
+                      setDialogState(() {
+                        dialogError = '请输入文件夹名称';
+                      });
+                      return;
+                    }
+                    if (name.contains('/')) {
+                      setDialogState(() {
+                        dialogError = '文件夹名称不能包含 /';
+                      });
+                      return;
+                    }
+                    Navigator.pop(context, name);
+                  },
+                  child: const Text('创建'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    nameController.dispose();
+    if (folderName == null || folderName.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await widget.client.createFolder(
+        parentPath: _currentPath,
+        folderName: folderName,
+      );
+      if (!mounted) {
+        return;
+      }
+      await _loadDirectory(path: _currentPath);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorMessage = error.toString();
+        _submitting = false;
+      });
+    }
+  }
+
+  Future<void> _confirmDeleteDownloadTask(NasDownloadTask task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('删除下载任务'),
+          content: Text('确定要删除“${task.title}”吗？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('删除'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    setState(() {
+      _downloadLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await widget.client.deleteDownloadTask(taskId: task.id);
       if (!mounted) {
         return;
       }
@@ -1641,10 +2543,9 @@ class _NasPageState extends State<NasPage> {
       return;
     }
     segments.removeLast();
-    final parentPath =
-        segments.isEmpty
-            ? SynologyNasClient.sharedRootPath
-            : '/${segments.join('/')}';
+    final parentPath = segments.isEmpty
+        ? SynologyNasClient.sharedRootPath
+        : '/${segments.join('/')}';
     await _loadDirectory(path: parentPath);
   }
 
@@ -1655,21 +2556,30 @@ class _NasPageState extends State<NasPage> {
     return _currentPath;
   }
 
+  List<NasDownloadTask> get _filteredDownloadTasks {
+    return switch (_downloadFilter) {
+      NasDownloadTaskFilter.all => _downloadTasks,
+      NasDownloadTaskFilter.downloading =>
+        _downloadTasks.where((task) => task.status == 'downloading').toList(),
+      NasDownloadTaskFilter.completed => _downloadTasks
+          .where(
+              (task) => task.status == 'finished' || task.status == 'seeding')
+          .toList(),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
+    final body = !_loggedIn
+        ? _buildLoginView()
+        : _showFileManager
+            ? _buildDirectoryView()
+            : _showDownloadManager
+                ? _buildDownloadManagerView()
+                : _buildMenuView();
     return Scaffold(
       appBar: AppBar(title: const Text('NAS')),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
-        child:
-            !_loggedIn
-                ? _buildLoginView()
-                : _showFileManager
-                ? _buildDirectoryView()
-                : _showDownloadManager
-                ? _buildDownloadManagerView()
-                : _buildMenuView(),
-      ),
+      body: body,
     );
   }
 
@@ -1708,15 +2618,14 @@ class _NasPageState extends State<NasPage> {
                 subtitle: '浏览共享目录和文件列表',
                 icon: Icons.folder_copy_rounded,
                 color: const Color(0xFF2563EB),
-                onTap:
-                    _submitting
-                        ? null
-                        : () {
-                          setState(() {
-                            _showFileManager = true;
-                            _showDownloadManager = false;
-                          });
-                        },
+                onTap: _submitting
+                    ? null
+                    : () {
+                        setState(() {
+                          _showFileManager = true;
+                          _showDownloadManager = false;
+                        });
+                      },
               ),
               const SizedBox(height: 16),
               _NasMenuCard(
@@ -1724,10 +2633,7 @@ class _NasPageState extends State<NasPage> {
                 subtitle: '查看和管理下载任务',
                 icon: Icons.download_rounded,
                 color: const Color(0xFF10B981),
-                onTap:
-                    _submitting
-                        ? null
-                        : _openDownloadManager,
+                onTap: _submitting ? null : _openDownloadManager,
               ),
             ],
           ),
@@ -1927,14 +2833,13 @@ class _NasPageState extends State<NasPage> {
                   ),
                   IconButton(
                     tooltip: '返回菜单',
-                    onPressed:
-                        _submitting
-                            ? null
-                            : () {
-                              setState(() {
-                                _showFileManager = false;
-                              });
-                            },
+                    onPressed: _submitting
+                        ? null
+                        : () {
+                            setState(() {
+                              _showFileManager = false;
+                            });
+                          },
                     icon: const Icon(Icons.dashboard_customize_rounded),
                   ),
                   IconButton(
@@ -1945,6 +2850,11 @@ class _NasPageState extends State<NasPage> {
                             ? null
                             : _goParent,
                     icon: const Icon(Icons.arrow_upward_rounded),
+                  ),
+                  IconButton(
+                    tooltip: '新建文件夹',
+                    onPressed: _submitting ? null : _showCreateFolderDialog,
+                    icon: const Icon(Icons.create_new_folder_rounded),
                   ),
                   IconButton(
                     tooltip: '刷新',
@@ -2025,6 +2935,7 @@ class _NasPageState extends State<NasPage> {
   }
 
   Widget _buildDownloadManagerView() {
+    final filteredTasks = _filteredDownloadTasks;
     return Padding(
       key: const ValueKey('nas-download-manager'),
       padding: const EdgeInsets.all(24),
@@ -2040,21 +2951,21 @@ class _NasPageState extends State<NasPage> {
                     Expanded(
                       child: Text(
                         '下载管理',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          color: const Color(0xFF111827),
-                        ),
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF111827),
+                                ),
                       ),
                     ),
                     OutlinedButton.icon(
-                      onPressed:
-                          _submitting
-                              ? null
-                              : () {
-                                setState(() {
-                                  _showDownloadManager = false;
-                                });
-                              },
+                      onPressed: _submitting
+                          ? null
+                          : () {
+                              setState(() {
+                                _showDownloadManager = false;
+                              });
+                            },
                       icon: const Icon(Icons.arrow_back_rounded),
                       label: const Text('返回菜单'),
                     ),
@@ -2066,9 +2977,10 @@ class _NasPageState extends State<NasPage> {
                     Expanded(
                       child: Text(
                         '任务列表',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
                       ),
                     ),
                     IconButton(
@@ -2078,18 +2990,62 @@ class _NasPageState extends State<NasPage> {
                     ),
                     const SizedBox(width: 8),
                     FilledButton.icon(
-                      onPressed: _downloadLoading ? null : _showCreateDownloadDialog,
+                      onPressed:
+                          _downloadLoading ? null : _showCreateDownloadDialog,
                       icon: const Icon(Icons.add_link_rounded),
                       label: const Text('添加任务'),
                     ),
                   ],
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: NasDownloadTaskFilter.values.map((filter) {
+                    final selected = _downloadFilter == filter;
+                    final count = switch (filter) {
+                      NasDownloadTaskFilter.all => _downloadTasks.length,
+                      NasDownloadTaskFilter.downloading => _downloadTasks
+                          .where((task) => task.status == 'downloading')
+                          .length,
+                      NasDownloadTaskFilter.completed => _downloadTasks
+                          .where(
+                            (task) =>
+                                task.status == 'finished' ||
+                                task.status == 'seeding',
+                          )
+                          .length,
+                    };
+                    return ChoiceChip(
+                      selected: selected,
+                      label: Text('${filter.label} $count'),
+                      onSelected: (_) {
+                        setState(() {
+                          _downloadFilter = filter;
+                        });
+                      },
+                      selectedColor: const Color(0xFFD1FAE5),
+                      labelStyle: TextStyle(
+                        color: selected
+                            ? const Color(0xFF047857)
+                            : const Color(0xFF475467),
+                        fontWeight: FontWeight.w800,
+                      ),
+                      side: BorderSide(
+                        color: selected
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFFE5E7EB),
+                      ),
+                    );
+                  }).toList(),
                 ),
                 const SizedBox(height: 16),
                 if (_errorMessage != null)
                   Container(
                     width: double.infinity,
                     margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFEF2F2),
                       borderRadius: BorderRadius.circular(16),
@@ -2113,7 +3069,7 @@ class _NasPageState extends State<NasPage> {
                 constraints: const BoxConstraints(maxWidth: 560),
                 child: Stack(
                   children: [
-                    if (_downloadTasks.isEmpty && !_downloadLoading)
+                    if (filteredTasks.isEmpty && !_downloadLoading)
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(24),
@@ -2122,28 +3078,32 @@ class _NasPageState extends State<NasPage> {
                           borderRadius: BorderRadius.circular(24),
                           border: Border.all(color: const Color(0xFFE5E7EB)),
                         ),
-                        child: const Column(
+                        child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.downloading_rounded,
                               size: 52,
                               color: Color(0xFF10B981),
                             ),
-                            SizedBox(height: 16),
+                            const SizedBox(height: 16),
                             Text(
-                              '暂无下载任务',
-                              style: TextStyle(
+                              _downloadTasks.isEmpty
+                                  ? '暂无下载任务'
+                                  : '暂无${_downloadFilter.label}任务',
+                              style: const TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.w900,
                                 color: Color(0xFF111827),
                               ),
                             ),
-                            SizedBox(height: 8),
+                            const SizedBox(height: 8),
                             Text(
-                              '点击右上角“添加任务”，可以通过 URL 创建新的下载任务。',
+                              _downloadTasks.isEmpty
+                                  ? '点击右上角“添加任务”，可以通过 URL 创建新的下载任务。'
+                                  : '切换上方筛选条件，可以查看其他状态的下载任务。',
                               textAlign: TextAlign.center,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 14,
                                 height: 1.6,
                                 color: Color(0xFF667085),
@@ -2154,11 +3114,14 @@ class _NasPageState extends State<NasPage> {
                       )
                     else
                       ListView.separated(
-                        itemCount: _downloadTasks.length,
+                        itemCount: filteredTasks.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
-                          final task = _downloadTasks[index];
-                          return _NasDownloadTaskTile(task: task);
+                          final task = filteredTasks[index];
+                          return _NasDownloadTaskTile(
+                            task: task,
+                            onDelete: () => _confirmDeleteDownloadTask(task),
+                          );
                         },
                       ),
                     if (_downloadLoading)
@@ -2358,9 +3321,13 @@ class _NasEntryTile extends StatelessWidget {
 }
 
 class _NasDownloadTaskTile extends StatelessWidget {
-  const _NasDownloadTaskTile({required this.task});
+  const _NasDownloadTaskTile({
+    required this.task,
+    required this.onDelete,
+  });
 
   final NasDownloadTask task;
+  final VoidCallback onDelete;
 
   Color get _statusColor {
     switch (task.status) {
@@ -2385,7 +3352,8 @@ class _NasDownloadTaskTile extends StatelessWidget {
       if (task.downloadedLabel != null && task.sizeLabel != null)
         '${task.downloadedLabel} / ${task.sizeLabel}',
       if (task.speedLabel != null) task.speedLabel!,
-      if (task.destination != null && task.destination!.isNotEmpty) task.destination!,
+      if (task.destination != null && task.destination!.isNotEmpty)
+        task.destination!,
     ];
 
     return Container(
@@ -2430,6 +3398,15 @@ class _NasDownloadTaskTile extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 10),
+                    IconButton(
+                      tooltip: '删除任务',
+                      onPressed: onDelete,
+                      icon: const Icon(
+                        Icons.delete_outline_rounded,
+                        color: Color(0xFFDC2626),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
