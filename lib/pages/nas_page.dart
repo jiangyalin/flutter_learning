@@ -274,7 +274,17 @@ class SynologyNasClient implements NasClient {
     required bool allowReauth,
   }) async {
     try {
-      final activeSid = _downloadStationSid ?? _sid;
+      var activeSid = _downloadStationSid;
+      if (activeSid == null || activeSid.isEmpty) {
+        if (_hasSavedCredentials) {
+          await _ensureDownloadStationSession();
+          activeSid = _downloadStationSid;
+        } else {
+          // Restore-session path: we may not have password in memory, try the
+          // current generic sid once and only ask re-login if NAS rejects it.
+          activeSid = _sid;
+        }
+      }
       if (activeSid == null || activeSid.isEmpty) {
         throw const SynologyApiException('尚未登录下载管理模块');
       }
@@ -309,6 +319,13 @@ class SynologyNasClient implements NasClient {
     } on SynologyApiException catch (error) {
       final needsDedicatedSession = _downloadStationSid == null &&
           <int>{101, 102, 103, 104}.contains(error.code);
+      if (error.code == 105 && !_hasSavedCredentials) {
+        throw const SynologyApiException('下载管理需要重新登录 NAS 后使用', code: 105);
+      }
+      if ((_isSessionExpired(error) || needsDedicatedSession) &&
+          !_hasSavedCredentials) {
+        throw const SynologyApiException('下载管理会话已失效，请重新登录 NAS 后重试', code: 105);
+      }
       if (allowReauth &&
           (_isSessionExpired(error) || needsDedicatedSession) &&
           _hasSavedCredentials) {
@@ -333,7 +350,8 @@ class SynologyNasClient implements NasClient {
     required bool allowReauth,
   }) async {
     try {
-      final activeSid = _downloadStationSid ?? _sid;
+      await _ensureDownloadStationSession();
+      final activeSid = _downloadStationSid;
       if (activeSid == null || activeSid.isEmpty) {
         throw const SynologyApiException('尚未登录下载管理模块');
       }
@@ -371,6 +389,10 @@ class SynologyNasClient implements NasClient {
 
       final needsDedicatedSession = _downloadStationSid == null &&
           <int>{101, 102, 103, 104}.contains(error.code);
+      if ((_isSessionExpired(error) || needsDedicatedSession) &&
+          !_hasSavedCredentials) {
+        throw const SynologyApiException('下载管理会话已失效，请重新登录 NAS 后重试', code: 105);
+      }
       if (allowReauth &&
           (_isSessionExpired(error) || needsDedicatedSession) &&
           _hasSavedCredentials) {
@@ -396,7 +418,8 @@ class SynologyNasClient implements NasClient {
     required bool allowReauth,
   }) async {
     try {
-      final activeSid = _downloadStationSid ?? _sid;
+      await _ensureDownloadStationSession();
+      final activeSid = _downloadStationSid;
       if (activeSid == null || activeSid.isEmpty) {
         throw const SynologyApiException('尚未登录下载管理模块');
       }
@@ -418,6 +441,10 @@ class SynologyNasClient implements NasClient {
     } on SynologyApiException catch (error) {
       final needsDedicatedSession = _downloadStationSid == null &&
           <int>{101, 102, 103, 104, 105}.contains(error.code);
+      if ((_isSessionExpired(error) || needsDedicatedSession) &&
+          !_hasSavedCredentials) {
+        throw const SynologyApiException('下载管理会话已失效，请重新登录 NAS 后重试', code: 105);
+      }
       if (allowReauth &&
           (_isSessionExpired(error) || needsDedicatedSession) &&
           _hasSavedCredentials) {
@@ -1191,11 +1218,6 @@ class SynologyNasClient implements NasClient {
     if (!forceRelogin &&
         _downloadStationSid != null &&
         _downloadStationSid!.isNotEmpty) {
-      return;
-    }
-    if (!forceRelogin && _sid != null && _sid!.isNotEmpty) {
-      _downloadStationSid = _sid;
-      _reportProgress('正在复用当前登录会话');
       return;
     }
     if (!_hasSavedCredentials) {
@@ -2549,6 +2571,84 @@ class _NasPageState extends State<NasPage> {
     await _loadDirectory(path: parentPath);
   }
 
+  bool get _isInNasSubPage =>
+      _loggedIn && (_showFileManager || _showDownloadManager);
+
+  void _backToNasMenu() {
+    if (!_isInNasSubPage) {
+      return;
+    }
+    setState(() {
+      _showFileManager = false;
+      _showDownloadManager = false;
+      _errorMessage = null;
+    });
+  }
+
+  Future<void> _handleLogout() async {
+    if (_submitting) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('退出登录'),
+          content: const Text('确定要退出当前 NAS 账号吗？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('退出'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _errorMessage = null;
+      _progressMessage = '正在退出登录';
+    });
+    try {
+      await widget.client.logout();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loggedIn = false;
+        _showFileManager = false;
+        _showDownloadManager = false;
+        _entries = const [];
+        _downloadTasks = const [];
+        _currentPath = SynologyNasClient.sharedRootPath;
+        _pendingInitialDownloadDialog = false;
+        _progressMessage = null;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorMessage = error.toString();
+        _progressMessage = null;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+        });
+      }
+    }
+  }
+
   String get _pathLabel {
     if (_currentPath == SynologyNasClient.sharedRootPath) {
       return '共享目录';
@@ -2577,9 +2677,34 @@ class _NasPageState extends State<NasPage> {
             : _showDownloadManager
                 ? _buildDownloadManagerView()
                 : _buildMenuView();
-    return Scaffold(
-      appBar: AppBar(title: const Text('NAS')),
-      body: body,
+    return PopScope(
+      canPop: !_isInNasSubPage,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _isInNasSubPage) {
+          _backToNasMenu();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('NAS'),
+          leading: _isInNasSubPage
+              ? IconButton(
+                  tooltip: '返回功能菜单',
+                  onPressed: _backToNasMenu,
+                  icon: const Icon(Icons.arrow_back_rounded),
+                )
+              : null,
+          actions: [
+            if (_loggedIn)
+              IconButton(
+                tooltip: '退出登录',
+                onPressed: _submitting ? null : _handleLogout,
+                icon: const Icon(Icons.logout_rounded),
+              ),
+          ],
+        ),
+        body: body,
+      ),
     );
   }
 
@@ -2832,17 +2957,6 @@ class _NasPageState extends State<NasPage> {
                     ),
                   ),
                   IconButton(
-                    tooltip: '返回菜单',
-                    onPressed: _submitting
-                        ? null
-                        : () {
-                            setState(() {
-                              _showFileManager = false;
-                            });
-                          },
-                    icon: const Icon(Icons.dashboard_customize_rounded),
-                  ),
-                  IconButton(
                     tooltip: '返回上级',
                     onPressed:
                         _currentPath == SynologyNasClient.sharedRootPath ||
@@ -2957,17 +3071,6 @@ class _NasPageState extends State<NasPage> {
                                   color: const Color(0xFF111827),
                                 ),
                       ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _submitting
-                          ? null
-                          : () {
-                              setState(() {
-                                _showDownloadManager = false;
-                              });
-                            },
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      label: const Text('返回菜单'),
                     ),
                   ],
                 ),
