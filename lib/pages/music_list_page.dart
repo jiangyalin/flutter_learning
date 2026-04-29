@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'wangyi_favorites_page.dart';
+
 class MusicListPage extends StatelessWidget {
   const MusicListPage({super.key});
 
@@ -35,7 +37,20 @@ class MusicListPage extends StatelessWidget {
               border: Border.all(color: const Color(0xFFE5E7EB)),
             ),
             child: ListTile(
-              onTap: () {},
+              onTap: () {
+                if (platform.name == '网易云音乐') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const WangYiFavoritesPage(),
+                    ),
+                  );
+                  return;
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('酷狗音乐功能开发中')),
+                );
+              },
               leading: Container(
                 width: 44,
                 height: 44,
